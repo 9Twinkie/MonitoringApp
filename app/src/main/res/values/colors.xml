@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#002147</color>
+    <color name="primary_dark">#001530</color>
+    <color name="primary_light">#1A3A6B</color>
+    <color name="accent_red">#D32F2F</color>
+    <color name="accent_orange">#F57C00</color>
+    <color name="accent_blue">#1976D2</color>
+    <color name="accent_green">#388E3C</color>
+    <color name="severity_critical_bg">#FFEBEE</color>
+    <color name="severity_critical_text">#C62828</color>
+    <color name="severity_warning_bg">#FFF3E0</color>
+    <color name="severity_warning_text">#E65100</color>
+    <color name="severity_ok_bg">#E8F5E9</color>
+    <color name="severity_ok_text">#2E7D32</color>
+    <color name="background">#F5F7FA</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="text_primary">#212121</color>
+    <color name="text_secondary">#757575</color>
+    <color name="divider">#E0E0E0</color>
+    <color name="chart_line_primary">#D32F2F</color>
+    <color name="chart_line_secondary">#388E3C</color>
+    <color name="chart_threshold">#D32F2F</color>
+    <color name="bottom_nav_selected">#D32F2F</color>
+    <color name="bottom_nav_unselected">#9E9E9E</color>
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+</resources>

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/mobile_navigation"
+    app:startDestination="@id/loginFragment">
+
+    <fragment
+        android:id="@+id/loginFragment"
+        android:name="com.example.monitoringapp.ui.login.LoginFragment"
+        android:label="@string/login_title"
+        tools:layout="@layout/fragment_login">
+        <action
+            android:id="@+id/action_login_to_main"
+            app:destination="@id/dashboardFragment"
+            app:popUpTo="@id/loginFragment"
+            app:popUpToInclusive="true" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/dashboardFragment"
+        android:name="com.example.monitoringapp.ui.dashboard.DashboardFragment"
+        android:label="@string/dashboard_title"
+        tools:layout="@layout/fragment_dashboard" />
+
+    <fragment
+        android:id="@+id/incidentsFragment"
+        android:name="com.example.monitoringapp.ui.incidents.IncidentsFragment"
+        android:label="@string/alerts_title"
+        tools:layout="@layout/fragment_incidents">
+        <action
+            android:id="@+id/action_incidents_to_detail"
+            app:destination="@id/incidentDetailFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/incidentDetailFragment"
+        android:name="com.example.monitoringapp.ui.incidents.IncidentDetailFragment"
+        android:label="@string/incident_detail"
+        tools:layout="@layout/fragment_incident_detail">
+        <argument
+            android:name="incidentId"
+            app:argType="long" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/metricsFragment"
+        android:name="com.example.monitoringapp.ui.metrics.MetricsFragment"
+        android:label="@string/graphs_title"
+        tools:layout="@layout/fragment_metrics">
+        <argument
+            android:name="incidentId"
+            android:defaultValue="-1L"
+            app:argType="long" />
+        <argument
+            android:name="metricQuery"
+            android:defaultValue="@null"
+            app:argType="string"
+            app:nullable="true" />
+        <argument
+            android:name="threshold"
+            android:defaultValue="-1"
+            app:argType="float" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/settingsFragment"
+        android:name="com.example.monitoringapp.ui.settings.SettingsFragment"
+        android:label="@string/profile_title"
+        tools:layout="@layout/fragment_settings" />
+
+</navigation>
