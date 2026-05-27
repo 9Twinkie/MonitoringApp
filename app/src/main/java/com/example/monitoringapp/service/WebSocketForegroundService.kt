@@ -69,6 +69,7 @@ class WebSocketForegroundService : Service() {
         webSocket = null
         alertsSessionStarted = false
         serviceScope.cancel()
+        stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()
     }
 

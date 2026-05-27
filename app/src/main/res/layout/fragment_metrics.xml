@@ -36,16 +36,29 @@
                 app:endIconDrawable="@android:drawable/ic_menu_search"
                 app:endIconMode="custom">
 
-                <AutoCompleteTextView
-                    android:id="@+id/actvMetricSearch"
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etMetricSearch"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:gravity="top|start"
                     android:imeOptions="actionSearch"
-                    android:inputType="text"
-                    android:maxLines="3"
+                    android:importantForAutofill="no"
+                    android:inputType="textNoSuggestions|textMultiLine"
+                    android:maxLines="4"
                     android:minHeight="48dp"
-                    android:paddingHorizontal="@dimen/spacing_md" />
+                    android:paddingHorizontal="@dimen/spacing_md"
+                    android:scrollHorizontally="true"
+                    android:textIsSelectable="true" />
             </com.google.android.material.textfield.TextInputLayout>
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvMetricSuggestions"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/spacing_xs"
+                android:nestedScrollingEnabled="false"
+                android:overScrollMode="never"
+                android:visibility="gone" />
 
             <TextView
                 android:layout_width="wrap_content"

@@ -43,7 +43,10 @@ class IncidentsFragment : Fragment() {
                 viewModel.selectIncident(incident)
                 binding.rvIncidents.smoothScrollToPosition(0)
             },
-            onOpenDetail = { openDetail(it) }
+            onOpenDetail = { openDetail(it) },
+            onOpenGraphs = { incident ->
+                IncidentGraphNavigator.openGraphs(findNavController(), binding.root, incident)
+            }
         )
     }
 
@@ -70,13 +73,15 @@ class IncidentsFragment : Fragment() {
 
         binding.tabLayout.addTab(binding.tabLayout.newTab().setText(R.string.tab_active))
         binding.tabLayout.addTab(binding.tabLayout.newTab().setText(R.string.tab_in_progress))
+        binding.tabLayout.addTab(binding.tabLayout.newTab().setText(R.string.tab_favorites))
         binding.tabLayout.addTab(binding.tabLayout.newTab().setText(R.string.tab_history))
         binding.tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: TabLayout.Tab?) {
                 viewModel.setTab(
                     when (tab?.position) {
                         1 -> IncidentTab.IN_PROGRESS
-                        2 -> IncidentTab.HISTORY
+                        2 -> IncidentTab.FAVORITES
+                        3 -> IncidentTab.HISTORY
                         else -> IncidentTab.ACTIVE
                     }
                 )
@@ -98,7 +103,8 @@ class IncidentsFragment : Fragment() {
                     viewModel.tab.collect { tab ->
                         val index = when (tab) {
                             IncidentTab.IN_PROGRESS -> 1
-                            IncidentTab.HISTORY -> 2
+                            IncidentTab.FAVORITES -> 2
+                            IncidentTab.HISTORY -> 3
                             else -> 0
                         }
                         if (binding.tabLayout.selectedTabPosition != index) {
@@ -142,6 +148,10 @@ class IncidentsFragment : Fragment() {
         binding.swipeRefresh.isRefreshing = false
         binding.tvEmpty.isVisible = state.isEmpty
         binding.rvIncidents.isVisible = !state.isEmpty
+        binding.tvEmpty.text = when (viewModel.tab.value) {
+            IncidentTab.FAVORITES -> getString(R.string.empty_favorites_incidents)
+            else -> getString(R.string.empty_incidents)
+        }
 
         if (state.isEmpty) {
             adapter.submitList(emptyList())
@@ -205,15 +215,8 @@ class IncidentsFragment : Fragment() {
 
     private fun openFeaturedGraphs() {
         val incident = viewModel.alertsScreen.value.featured.incident ?: return
-        val query = incident.metricName ?: return
-        findNavController().navigate(
-            R.id.metricsFragment,
-            bundleOf(
-                "incidentId" to incident.id,
-                "metricQuery" to query,
-                "threshold" to (incident.threshold ?: 0.5f)
-            )
-        )
+        val anchor = featuredBinding?.root ?: binding.root
+        IncidentGraphNavigator.openGraphs(findNavController(), anchor, incident)
     }
 
     private fun openDetail(incident: Incident) {

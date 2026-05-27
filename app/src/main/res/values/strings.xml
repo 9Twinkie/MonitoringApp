@@ -17,10 +17,12 @@
     <string name="search_objects_hint">Поиск объектов…</string>
     <string name="favorites_section">Избранные объекты</string>
     <string name="notify_favorites_only">Уведомления только по избранным</string>
-    <string name="notify_favorites_only_hint">Push при инцидентах на отмеченных объектах</string>
+    <string name="notify_favorites_only_hint">Push только по объектам со ★ на «Мониторинг». Без избранных уведомлений не будет.</string>
     <string name="add_to_favorites">В избранное</string>
     <string name="remove_from_favorites">Убрать из избранного</string>
     <string name="filter_favorites_only">Только избранное</string>
+    <string name="tab_favorites">Избранное</string>
+    <string name="empty_favorites_incidents">Нет алертов по избранным объектам. Отметьте ★ на вкладке «Мониторинг».</string>
     <string name="incidents_count">Инцидентов: %d</string>
     <string name="dashboard_title">Мониторинг</string>
     <string name="critical_incidents">Критические инциденты</string>
@@ -109,6 +111,7 @@
     <string name="servers_status_unknown">Нет данных</string>
     <string name="chart_loading">Загрузка графика…</string>
     <string name="chart_no_data">Нет данных для графика</string>
+    <string name="chart_no_query">Для этого алерта нет PromQL — график недоступен</string>
     <string name="chart_series_metric">Метрика за 1 ч</string>
     <string name="chart_threshold_label">Порог</string>
     <string name="users_title">Пользователи</string>

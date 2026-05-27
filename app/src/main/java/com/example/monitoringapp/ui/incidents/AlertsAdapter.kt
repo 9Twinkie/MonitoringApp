@@ -21,7 +21,8 @@ class AlertsAdapter(
     private val onComplete: (Incident) -> Unit,
     private val onClose: (Incident) -> Unit,
     private val onSelect: (Incident) -> Unit,
-    private val onOpenDetail: (Incident) -> Unit
+    private val onOpenDetail: (Incident) -> Unit,
+    private val onOpenGraphs: (Incident) -> Unit
 ) : ListAdapter<AlertsListItem, RecyclerView.ViewHolder>(Diff) {
 
     companion object {
@@ -56,7 +57,8 @@ class AlertsAdapter(
                 onComplete,
                 onClose,
                 onSelect,
-                onOpenDetail
+                onOpenDetail,
+                onOpenGraphs
             )
         }
     }
@@ -137,7 +139,8 @@ class AlertsAdapter(
         private val onComplete: (Incident) -> Unit,
         private val onClose: (Incident) -> Unit,
         private val onSelect: (Incident) -> Unit,
-        private val onOpenDetail: (Incident) -> Unit
+        private val onOpenDetail: (Incident) -> Unit,
+        private val onOpenGraphs: (Incident) -> Unit
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(item: Incident) {
@@ -180,6 +183,11 @@ class AlertsAdapter(
             binding.btnAccept.setOnClickListener { onAccept(item) }
             binding.btnConfirm.setOnClickListener { onComplete(item) }
             binding.btnClose.setOnClickListener { onClose(item) }
+            val canChart = IncidentGraphNavigator.chartQuery(item) != null
+            binding.btnGraphs.isVisible = true
+            binding.btnGraphs.isEnabled = canChart
+            binding.btnGraphs.alpha = if (canChart) 1f else 0.45f
+            binding.btnGraphs.setOnClickListener { onOpenGraphs(item) }
             binding.root.setOnClickListener { onSelect(item) }
             binding.root.setOnLongClickListener {
                 onOpenDetail(item)

@@ -6,7 +6,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
-import android.widget.ArrayAdapter
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.core.widget.addTextChangedListener
@@ -16,9 +15,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.findNavController
+import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.monitoringapp.R
 import com.example.monitoringapp.databinding.FragmentMetricsBinding
 import com.example.monitoringapp.domain.model.ChartTimeRange
+import com.example.monitoringapp.domain.model.MetricPoint
 import com.example.monitoringapp.utils.ChartHelper
 import com.example.monitoringapp.utils.UiState
 import com.google.android.material.chip.Chip
@@ -35,8 +36,7 @@ class MetricsFragment : Fragment() {
 
     private var rangeChipsFromCode = false
     private var suppressTextCallback = false
-    private var suggestionsAdapter: ArrayAdapter<String>? = null
-    private var lastSuggestions: List<String> = emptyList()
+    private lateinit var suggestionsAdapter: MetricSuggestionsAdapter
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -51,34 +51,41 @@ class MetricsFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         binding.header.tvHeaderTitle.setText(R.string.graphs_title)
         ChartHelper.setupLineChart(binding.lineChart, requireContext(), interactive = true)
+
+        suggestionsAdapter = MetricSuggestionsAdapter { suggestion ->
+            hideKeyboard()
+            binding.etMetricSearch.setText(suggestion)
+            binding.etMetricSearch.setSelection(suggestion.length)
+            viewModel.selectSuggestion(suggestion)
+        }
+        binding.rvMetricSuggestions.layoutManager = LinearLayoutManager(requireContext())
+        binding.rvMetricSuggestions.adapter = suggestionsAdapter
+
         setupMetricSearch()
         setupRangeChips()
+        renderChart(viewModel.chartPoints.value)
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch {
-                    viewModel.queryInput.collect { query ->
-                        if (binding.actvMetricSearch.text?.toString() != query) {
+                    viewModel.searchFieldText.collect { text ->
+                        if (binding.etMetricSearch.text?.toString() != text) {
                             suppressTextCallback = true
-                            binding.actvMetricSearch.setText(query, false)
-                            binding.actvMetricSearch.setSelection(query.length)
+                            binding.etMetricSearch.setText(text)
+                            binding.etMetricSearch.setSelection(text.length)
                             suppressTextCallback = false
                         }
                     }
                 }
                 launch {
                     viewModel.suggestions.collect { suggestions ->
-                        if (suggestions == lastSuggestions) return@collect
-                        lastSuggestions = suggestions
-                        suggestionsAdapter = ArrayAdapter(
-                            requireContext(),
-                            android.R.layout.simple_dropdown_item_1line,
-                            suggestions
-                        )
-                        binding.actvMetricSearch.setAdapter(suggestionsAdapter)
-                        if (suggestions.isNotEmpty() && binding.actvMetricSearch.hasFocus()) {
-                            binding.actvMetricSearch.showDropDown()
-                        }
+                        suggestionsAdapter.submitList(suggestions)
+                        binding.rvMetricSuggestions.isVisible = suggestions.isNotEmpty()
+                    }
+                }
+                launch {
+                    viewModel.searchHint.collect { message ->
+                        Snackbar.make(binding.root, message, Snackbar.LENGTH_SHORT).show()
                     }
                 }
                 launch {
@@ -87,33 +94,44 @@ class MetricsFragment : Fragment() {
                     }
                 }
                 launch {
-                    viewModel.chartPoints.collect { state ->
-                        binding.progressBar.isVisible = state is UiState.Loading
-                        when (state) {
-                            is UiState.Success -> {
-                                ChartHelper.bindMetricChart(
-                                    binding.lineChart,
-                                    requireContext(),
-                                    primary = state.data,
-                                    threshold = viewModel.currentThreshold(),
-                                    keepExistingWhenEmpty = false
-                                )
-                            }
-                            is UiState.Error -> {
-                                ChartHelper.bindMetricChart(
-                                    binding.lineChart,
-                                    requireContext(),
-                                    primary = emptyList(),
-                                    emptyText = state.message,
-                                    keepExistingWhenEmpty = false
-                                )
-                                Snackbar.make(binding.root, state.message, Snackbar.LENGTH_LONG).show()
-                            }
-                            else -> Unit
-                        }
-                    }
+                    viewModel.chartPoints.collect { state -> renderChart(state) }
                 }
             }
+        }
+    }
+
+    private fun renderChart(state: UiState<List<MetricPoint>>) {
+        val chart = binding.lineChart
+        binding.progressBar.isVisible = state is UiState.Loading
+        when (state) {
+            is UiState.Success -> chart.post {
+                ChartHelper.bindMetricChart(
+                    chart,
+                    requireContext(),
+                    primary = state.data,
+                    threshold = viewModel.currentThreshold(),
+                    keepExistingWhenEmpty = false
+                )
+            }
+            is UiState.Error -> chart.post {
+                ChartHelper.bindMetricChart(
+                    chart,
+                    requireContext(),
+                    primary = emptyList(),
+                    emptyText = state.message,
+                    keepExistingWhenEmpty = false
+                )
+            }
+            is UiState.Loading -> chart.post {
+                ChartHelper.bindMetricChart(
+                    chart,
+                    requireContext(),
+                    primary = emptyList(),
+                    emptyText = getString(R.string.chart_loading),
+                    keepExistingWhenEmpty = true
+                )
+            }
+            else -> Unit
         }
     }
 
@@ -121,22 +139,18 @@ class MetricsFragment : Fragment() {
         binding.tilMetricSearch.setEndIconOnClickListener {
             runMetricQuery()
         }
-        binding.actvMetricSearch.setOnFocusChangeListener { _, hasFocus ->
+        binding.etMetricSearch.setOnFocusChangeListener { _, hasFocus ->
             if (hasFocus) {
                 binding.scrollMetricsControls.post {
                     binding.scrollMetricsControls.smoothScrollTo(0, 0)
                 }
             }
         }
-        binding.actvMetricSearch.addTextChangedListener { text ->
+        binding.etMetricSearch.addTextChangedListener { text ->
             if (suppressTextCallback) return@addTextChangedListener
             viewModel.onQueryInputChanged(text?.toString().orEmpty())
         }
-        binding.actvMetricSearch.setOnItemClickListener { _, _, position, _ ->
-            val value = lastSuggestions.getOrNull(position) ?: return@setOnItemClickListener
-            viewModel.selectSuggestion(value)
-        }
-        binding.actvMetricSearch.setOnEditorActionListener { _, actionId, _ ->
+        binding.etMetricSearch.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEARCH) {
                 runMetricQuery()
                 true
@@ -148,12 +162,13 @@ class MetricsFragment : Fragment() {
 
     private fun runMetricQuery() {
         hideKeyboard()
-        viewModel.executeQuery(binding.actvMetricSearch.text?.toString())
+        binding.rvMetricSuggestions.isVisible = false
+        viewModel.executeQuery(binding.etMetricSearch.text?.toString().orEmpty())
     }
 
     private fun hideKeyboard() {
         val imm = ContextCompat.getSystemService(requireContext(), InputMethodManager::class.java)
-        imm?.hideSoftInputFromWindow(binding.actvMetricSearch.windowToken, 0)
+        imm?.hideSoftInputFromWindow(binding.etMetricSearch.windowToken, 0)
     }
 
     private fun setupRangeChips() {

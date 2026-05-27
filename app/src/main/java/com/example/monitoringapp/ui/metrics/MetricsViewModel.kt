@@ -13,13 +13,18 @@ import com.example.monitoringapp.domain.model.MetricOverview
 import com.example.monitoringapp.domain.model.MetricPoint
 import com.example.monitoringapp.domain.repository.IncidentRepository
 import com.example.monitoringapp.domain.repository.MetricsRepository
+import com.example.monitoringapp.utils.IncidentDisplayHelper
+import com.example.monitoringapp.utils.PromqlQueryHelper
 import com.example.monitoringapp.utils.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -53,12 +58,16 @@ class MetricsViewModel @Inject constructor(
     private var appliedArgsKey: String? = null
     private var chartJob: Job? = null
     private var searchJob: Job? = null
+    private var lastExecutedQuery: String? = null
 
-    private val _queryInput = MutableStateFlow("")
-    val queryInput: StateFlow<String> = _queryInput.asStateFlow()
+    private val _searchFieldText = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val searchFieldText: SharedFlow<String> = _searchFieldText.asSharedFlow()
 
     private val _suggestions = MutableStateFlow<List<String>>(emptyList())
     val suggestions: StateFlow<List<String>> = _suggestions.asStateFlow()
+
+    private val _searchHint = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val searchHint: SharedFlow<String> = _searchHint.asSharedFlow()
 
     private val _chartPoints = MutableStateFlow<UiState<List<MetricPoint>>>(UiState.Loading)
     val chartPoints: StateFlow<UiState<List<MetricPoint>>> = _chartPoints.asStateFlow()
@@ -69,7 +78,6 @@ class MetricsViewModel @Inject constructor(
     val selectedRange: StateFlow<ChartTimeRange> = _selectedRange.asStateFlow()
 
     private var activeThreshold: Float? = null
-    private var suppressSearch = false
 
     init {
         val navArgs = MetricsNavArgs(navIncidentId, navQuery, navThreshold)
@@ -95,15 +103,18 @@ class MetricsViewModel @Inject constructor(
         if (appliedArgsKey == SESSION_KEY && _chartPoints.value is UiState.Success) return
 
         val saved = metricsRepository.getLastChartQuery()
-        if (!saved.isNullOrBlank()) {
+        if (!saved.isNullOrBlank() && PromqlQueryHelper.validate(saved) == null) {
             appliedArgsKey = SESSION_KEY
-            if (_queryInput.value != saved) {
-                _queryInput.value = saved
-            }
-            if (_chartPoints.value !is UiState.Success) {
-                executeQuery(saved)
+            if (lastExecutedQuery != saved) {
+                publishSearchField(saved)
+                if (_chartPoints.value !is UiState.Success) {
+                    executeQuery(saved)
+                }
             }
             return
+        }
+        if (!saved.isNullOrBlank()) {
+            metricsRepository.setLastChartQuery(null)
         }
 
         if (appliedArgsKey != null) return
@@ -144,8 +155,6 @@ class MetricsViewModel @Inject constructor(
     }
 
     fun onQueryInputChanged(text: String) {
-        if (suppressSearch) return
-        _queryInput.value = text
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             delay(250)
@@ -157,9 +166,17 @@ class MetricsViewModel @Inject constructor(
         setQueryAndRun(value)
     }
 
-    fun executeQuery(query: String? = _queryInput.value) {
-        val trimmed = query?.trim().orEmpty()
+    fun executeQuery(query: String) {
+        val trimmed = query.trim()
         if (trimmed.isEmpty()) return
+
+        PromqlQueryHelper.validate(trimmed)?.let { message ->
+            _chartPoints.value = UiState.Error(message)
+            viewModelScope.launch { _searchHint.emit(message) }
+            return
+        }
+
+        lastExecutedQuery = trimmed
         metricsRepository.setLastChartQuery(trimmed)
         metricsRepository.setLastChartRangeMinutes(_selectedRange.value.minutes)
         appliedArgsKey = SESSION_KEY
@@ -173,18 +190,21 @@ class MetricsViewModel @Inject constructor(
         if (_selectedRange.value == range) return
         _selectedRange.value = range
         metricsRepository.setLastChartRangeMinutes(range.minutes)
-        executeQuery()
+        lastExecutedQuery?.let { executeQuery(it) }
     }
 
     fun currentThreshold(): Float? = activeThreshold
 
     private fun restoreSessionOrLoadDefaults() {
         val saved = metricsRepository.getLastChartQuery()
-        if (!saved.isNullOrBlank()) {
+        if (!saved.isNullOrBlank() && PromqlQueryHelper.validate(saved) == null) {
             appliedArgsKey = SESSION_KEY
-            _queryInput.value = saved
+            publishSearchField(saved)
             executeQuery(saved)
             return
+        }
+        if (!saved.isNullOrBlank()) {
+            metricsRepository.setLastChartQuery(null)
         }
         onScreenVisible(MetricsNavArgs())
     }
@@ -192,11 +212,13 @@ class MetricsViewModel @Inject constructor(
     private fun hasNavIntent(args: MetricsNavArgs): Boolean =
         args.incidentId > 0L || !args.metricQuery.isNullOrBlank()
 
+    private fun publishSearchField(text: String) {
+        _searchFieldText.tryEmit(text)
+    }
+
     private fun setQueryAndRun(promql: String, threshold: Float? = null) {
-        suppressSearch = true
-        _queryInput.value = promql
+        publishSearchField(promql)
         activeThreshold = threshold
-        suppressSearch = false
         _suggestions.value = emptyList()
         executeQuery(promql)
     }
@@ -209,7 +231,10 @@ class MetricsViewModel @Inject constructor(
         }
         metricsRepository.searchMetricSuggestions(trimmed).fold(
             onSuccess = { list -> _suggestions.value = list },
-            onFailure = { _suggestions.value = emptyList() }
+            onFailure = {
+                _suggestions.value = emptyList()
+                _searchHint.emit(it.message ?: "Ошибка поиска метрик")
+            }
         )
     }
 
@@ -222,12 +247,7 @@ class MetricsViewModel @Inject constructor(
     }
 
     private suspend fun showIncident(incident: Incident) {
-        val promql = sequenceOf(
-            incident.metricExpr,
-            ChartDataMapper.buildQuery(incident.metricName),
-            incident.metricName
-        ).firstOrNull { !it.isNullOrBlank() }
-            ?: incident.title
+        val promql = IncidentDisplayHelper.chartQuery(incident) ?: incident.title
         val threshold = incident.threshold ?: navThreshold.takeIf { it >= 0f }
         setQueryAndRun(promql, threshold)
     }
@@ -256,7 +276,7 @@ class MetricsViewModel @Inject constructor(
     }
 
     private suspend fun loadChartForPromql(promql: String) {
-        val normalized = ChartDataMapper.buildQuery(promql) ?: promql
+        val normalized = promql.trim().let { ChartDataMapper.buildQuery(it) ?: it }
         _chartPoints.value = UiState.Loading
 
         findIncidentByMetric(normalized)?.let { incident ->
@@ -288,8 +308,7 @@ class MetricsViewModel @Inject constructor(
             onSuccess = { chart ->
                 activeThreshold = chart.threshold ?: activeThreshold
                 if (chart.points.isEmpty()) {
-                    val promql = ChartDataMapper.buildQuery(incident.metricName)
-                        ?: incident.metricName
+                    val promql = IncidentDisplayHelper.chartQuery(incident)
                     if (!promql.isNullOrBlank()) {
                         metricsRepository.loadMetricRange(promql, rangeMinutes).fold(
                             onSuccess = { points ->

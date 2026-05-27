@@ -51,7 +51,7 @@ interface MonitoringApi {
 
     @GET("monitoring/prometheus/range")
     suspend fun getPrometheusRange(
-        @Query("query") query: String,
+        @Query(value = "query", encoded = true) query: String,
         @Query("hours") hours: Int? = null,
         @Query("minutes") minutes: Int? = null,
         @Query("step") step: String = "15s"
@@ -59,7 +59,7 @@ interface MonitoringApi {
 
     @GET("monitoring/prometheus/query_range")
     suspend fun getPrometheusQueryRange(
-        @Query("query") query: String,
+        @Query(value = "query", encoded = true) query: String,
         @Query("hours") hours: Int? = null,
         @Query("minutes") minutes: Int? = null,
         @Query("step") step: String = "15s"
@@ -67,8 +67,16 @@ interface MonitoringApi {
 
     /** Legacy-путь на бэкенде (оставлен для совместимости). */
     @GET("monitoring/metrics/range")
+    suspend fun getMetricsRangeRaw(
+        @Query(value = "query", encoded = true) query: String,
+        @Query("hours") hours: Int? = null,
+        @Query("minutes") minutes: Int? = null,
+        @Query("step") step: String = "15s"
+    ): ResponseBody
+
+    @GET("monitoring/metrics/range")
     suspend fun getMetricsRange(
-        @Query("query") query: String,
+        @Query(value = "query", encoded = true) query: String,
         @Query("hours") hours: Int? = null,
         @Query("minutes") minutes: Int? = null,
         @Query("step") step: String = "15s"
@@ -76,15 +84,15 @@ interface MonitoringApi {
 
     @GET("monitoring/metrics/names")
     suspend fun getMetricNamesRaw(
-        @Query("match") match: String? = null,
-        @Query("q") q: String? = null,
+        @Query(value = "match", encoded = true) match: String? = null,
+        @Query(value = "q", encoded = true) q: String? = null,
         @Query("limit") limit: Int? = 20
     ): ResponseBody
 
     @GET("monitoring/metrics/suggest")
     suspend fun getMetricSuggestRaw(
-        @Query("q") q: String,
-        @Query("query") query: String? = null,
+        @Query(value = "q", encoded = true) q: String,
+        @Query(value = "query", encoded = true) query: String? = null,
         @Query("limit") limit: Int? = 20
     ): ResponseBody
 

@@ -20,6 +20,7 @@ import com.example.monitoringapp.domain.model.IncidentWorkflow
 import com.example.monitoringapp.domain.repository.AuthRepository
 import com.example.monitoringapp.domain.repository.IncidentRepository
 import com.example.monitoringapp.utils.ApiErrorMapper
+import com.example.monitoringapp.utils.IncidentDisplayHelper
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -133,8 +134,8 @@ class IncidentRepositoryImpl @Inject constructor(
                 }
             }
 
-        val query = ChartDataMapper.buildQuery(incident.metricName)
-            ?: return IncidentChartData(emptyList(), incident.threshold, incident.metricName)
+        val query = IncidentDisplayHelper.chartQuery(incident)
+            ?: return IncidentChartData(emptyList(), incident.threshold, null)
         val points = fetchRange(query, rangeMinutes)
         return IncidentChartData(
             points = points,

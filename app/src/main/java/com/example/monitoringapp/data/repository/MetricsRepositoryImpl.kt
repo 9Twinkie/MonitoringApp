@@ -9,6 +9,9 @@ import com.example.monitoringapp.data.mapper.ChartDataMapper
 import com.example.monitoringapp.data.mapper.ChartRangeMapper
 import com.example.monitoringapp.data.mapper.MetricSearchJsonParser
 import com.example.monitoringapp.data.mapper.PrometheusOverviewJsonParser
+import com.example.monitoringapp.data.mapper.PrometheusRangeJsonParser
+import com.example.monitoringapp.utils.ApiErrorMapper
+import com.example.monitoringapp.utils.QueryParamEncoder
 import com.example.monitoringapp.domain.model.ChartTimeRange
 import com.example.monitoringapp.data.mapper.toDomain
 import com.example.monitoringapp.domain.model.MetricPoint
@@ -138,52 +141,102 @@ class MetricsRepositoryImpl @Inject constructor(
         if (!networkMonitor.checkOnline()) {
             return Result.failure(IllegalStateException("Нет сети"))
         }
-        return runCatching {
-            val range = ChartTimeRange.fromMinutes(rangeMinutes)
-            requestRange(query, range)?.let { return@runCatching it }
-            if (rangeMinutes < 60) {
-                requestRange(query, ChartTimeRange.HOUR)?.let {
-                    return@runCatching ChartRangeMapper.filterByRange(it, rangeMinutes)
-                }
+        val range = ChartTimeRange.fromMinutes(rangeMinutes)
+        val errors = mutableListOf<Throwable>()
+
+        requestRange(query, range, errors)?.let { return Result.success(it) }
+
+        if (rangeMinutes < 60) {
+            requestRange(query, ChartTimeRange.HOUR, errors)?.let { hourPoints ->
+                val filtered = ChartRangeMapper.filterByRange(hourPoints, rangeMinutes)
+                if (filtered.isNotEmpty()) return Result.success(filtered)
             }
-            emptyList()
         }
+
+        val message = errors.firstOrNull()?.let { ApiErrorMapper.toMessage(it) }
+            ?: "Сервер не вернул точек для запроса. Проверьте PromQL и GET /monitoring/metrics/range на бэкенде."
+        return Result.failure(IllegalStateException(message))
     }
 
-    private suspend fun requestRange(query: String, range: ChartTimeRange): List<MetricPoint>? {
+    private suspend fun requestRange(
+        query: String,
+        range: ChartTimeRange,
+        errors: MutableList<Throwable>
+    ): List<MetricPoint>? {
         val filtered: (List<MetricPoint>) -> List<MetricPoint> = { points ->
             ChartRangeMapper.filterByRange(points, range.minutes)
         }
-        parseRange(
-            runCatching {
-                api.getPrometheusRange(
-                    query,
-                    hours = range.apiHours,
-                    minutes = range.apiMinutes,
-                    step = range.step
-                )
-            }.getOrNull()
-        )?.let { return filtered(it) }
-        parseRange(
-            runCatching {
-                api.getPrometheusQueryRange(
-                    query,
-                    hours = range.apiHours,
-                    minutes = range.apiMinutes,
-                    step = range.step
-                )
-            }.getOrNull()
-        )?.let { return filtered(it) }
-        parseRange(
-            runCatching {
-                api.getMetricsRange(
-                    query,
-                    hours = range.apiHours,
-                    minutes = range.apiMinutes,
-                    step = range.step
-                )
-            }.getOrNull()
-        )?.let { return filtered(it) }
+
+        suspend fun tryRaw(fetch: suspend () -> String): List<MetricPoint>? {
+            return runCatching { fetch() }.fold(
+                onSuccess = { body ->
+                    val points = runCatching {
+                        PrometheusRangeJsonParser.parse(json, body)
+                    }.getOrElse {
+                        errors.add(it)
+                        return@fold null
+                    }
+                    when {
+                        points.isNotEmpty() -> points
+                        PrometheusRangeJsonParser.isSuccessRangeBody(json, body) -> emptyList()
+                        else -> null
+                    }
+                },
+                onFailure = {
+                    errors.add(it)
+                    null
+                }
+            )
+        }
+
+        suspend fun tryDto(fetch: suspend () -> com.example.monitoringapp.data.model.PrometheusQueryRangeDto): List<MetricPoint>? {
+            return runCatching { fetch() }.fold(
+                onSuccess = { dto -> parseRange(dto) },
+                onFailure = {
+                    errors.add(it)
+                    null
+                }
+            )
+        }
+
+        val encodedQuery = QueryParamEncoder.encode(query)
+
+        tryRaw {
+            api.getMetricsRangeRaw(
+                encodedQuery,
+                hours = range.apiHours,
+                minutes = range.apiMinutes,
+                step = range.step
+            ).string()
+        }?.let { return filtered(it) }
+
+        tryDto {
+            api.getMetricsRange(
+                encodedQuery,
+                hours = range.apiHours,
+                minutes = range.apiMinutes,
+                step = range.step
+            )
+        }?.let { return filtered(it) }
+
+        tryDto {
+            api.getPrometheusRange(
+                encodedQuery,
+                hours = range.apiHours,
+                minutes = range.apiMinutes,
+                step = range.step
+            )
+        }?.let { return filtered(it) }
+
+        tryDto {
+            api.getPrometheusQueryRange(
+                encodedQuery,
+                hours = range.apiHours,
+                minutes = range.apiMinutes,
+                step = range.step
+            )
+        }?.let { return filtered(it) }
+
         return null
     }
 
@@ -195,11 +248,31 @@ class MetricsRepositoryImpl @Inject constructor(
             return Result.failure(IllegalStateException("Нет сети"))
         }
         val trimmed = query.trim()
-        if (trimmed.length < 2) return Result.success(emptyList())
+        if (trimmed.isEmpty()) return Result.success(emptyList())
         return runCatching {
-            val body = api.getMetricNamesRaw(match = trimmed, q = trimmed, limit = limit).string()
-            MetricSearchJsonParser.parse(json, body)
+            val encoded = QueryParamEncoder.encode(trimmed)
+            val matchPatterns = buildMatchPatterns(trimmed)
+            for (pattern in matchPatterns) {
+                val body = api.getMetricNamesRaw(
+                    match = QueryParamEncoder.encode(pattern),
+                    q = encoded,
+                    limit = limit
+                ).string()
+                val parsed = MetricSearchJsonParser.parse(json, body)
+                if (parsed.isNotEmpty()) return@runCatching parsed
+            }
+            emptyList()
         }
+    }
+
+    private fun buildMatchPatterns(query: String): List<String> {
+        if (query.contains('{') || query.contains('(')) return listOf(query)
+        return listOf(
+            query,
+            "*$query*",
+            ".*$query.*",
+            "$query.*"
+        ).distinct()
     }
 
     override suspend fun suggestPromql(query: String, limit: Int): Result<List<String>> {
@@ -209,7 +282,12 @@ class MetricsRepositoryImpl @Inject constructor(
         val trimmed = query.trim()
         if (trimmed.isEmpty()) return Result.success(emptyList())
         return runCatching {
-            val body = api.getMetricSuggestRaw(q = trimmed, query = trimmed, limit = limit).string()
+            val encoded = QueryParamEncoder.encode(trimmed)
+            val body = api.getMetricSuggestRaw(
+                q = encoded,
+                query = encoded,
+                limit = limit
+            ).string()
             MetricSearchJsonParser.parse(json, body)
         }
     }
@@ -236,25 +314,60 @@ class MetricsRepositoryImpl @Inject constructor(
         val trimmed = query.trim()
         if (trimmed.isEmpty()) return Result.success(emptyList())
 
-        PromqlSearchHelper.detectLabelValueCompletion(trimmed)?.let { completion ->
-            return suggestLabelValues(completion.label, completion.valuePrefix, limit).map { values ->
-                values.map { value ->
-                    PromqlSearchHelper.applyLabelValue(trimmed, completion.label, value)
-                }
+        val labelCompletion = PromqlSearchHelper.detectLabelValueCompletion(trimmed)
+        if (labelCompletion != null) {
+            val labelSuggestions = suggestLabelValues(
+                labelCompletion.label,
+                labelCompletion.valuePrefix,
+                limit
+            ).getOrElse { emptyList() }
+                .map { value -> PromqlSearchHelper.applyLabelValue(trimmed, labelCompletion.label, value) }
+            if (labelSuggestions.isNotEmpty()) {
+                return Result.success(labelSuggestions.take(limit))
             }
         }
 
+        val promqlInput = trimmed.contains('{') || trimmed.contains('(')
+
         return runCatching {
             coroutineScope {
-                val namesDeferred = async {
-                    searchMetricNames(trimmed, limit).getOrElse { emptyList() }
-                }
                 val suggestDeferred = async {
                     suggestPromql(trimmed, limit).getOrElse { emptyList() }
                 }
-                (suggestDeferred.await() + namesDeferred.await())
-                    .distinct()
-                    .take(limit)
+                val namesDeferred = if (!promqlInput) {
+                    async { searchMetricNames(trimmed, limit).getOrElse { emptyList() } }
+                } else {
+                    null
+                }
+                val namesByPrefix = if (promqlInput) {
+                    val metricPrefix = PromqlSearchHelper.metricNamePrefix(trimmed)
+                    if (metricPrefix != null && metricPrefix.length >= 1) {
+                        async {
+                            searchMetricNames(metricPrefix, limit).getOrElse { emptyList() }
+                                .map { name ->
+                                    val braceIndex = trimmed.indexOf('{')
+                                    if (braceIndex >= 0) {
+                                        trimmed.substring(0, braceIndex) + name.removePrefix(metricPrefix)
+                                    } else {
+                                        name
+                                    }
+                                }
+                        }
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+                val merged = buildList {
+                    if (PromqlSearchHelper.looksLikeRunnablePromql(trimmed)) {
+                        add(trimmed)
+                    }
+                    addAll(suggestDeferred.await())
+                    namesDeferred?.await()?.let { addAll(it) }
+                    namesByPrefix?.await()?.let { addAll(it) }
+                }
+                merged.distinct().take(limit)
             }
         }
     }

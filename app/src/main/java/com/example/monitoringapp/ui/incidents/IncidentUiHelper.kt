@@ -91,7 +91,12 @@ object IncidentUiHelper {
         binding.btnAccept.isVisible = actions.showAccept
         binding.btnConfirm.isVisible = actions.showComplete
         binding.btnClose.isVisible = actions.showClose
+        val canOpenChart = IncidentGraphNavigator.chartQuery(incident) != null
         binding.btnGraphs.isVisible = true
+        binding.btnGraphs.isEnabled = canOpenChart
+        binding.btnGraphs.alpha = if (canOpenChart) 1f else 0.45f
+        binding.chartMiniContainer.isClickable = canOpenChart
+        binding.chartMiniContainer.isFocusable = canOpenChart
         binding.actionsRow.isVisible =
             actions.showAccept || actions.showComplete || actions.showClose || binding.btnGraphs.isVisible
     }
@@ -104,19 +109,25 @@ object IncidentUiHelper {
         chartLoading: Boolean = false
     ) {
         val threshold = chartThreshold ?: incident.threshold ?: inferThreshold(incident)
-        ChartHelper.bindMetricChart(
-            chart = binding.chartMini,
-            context = binding.root.context,
-            primary = chartPoints,
-            threshold = threshold,
-            emptyText = if (chartLoading) {
-                binding.root.context.getString(R.string.chart_loading)
-            } else {
-                binding.root.context.getString(R.string.chart_no_data)
-            },
-            interactive = false,
-            keepExistingWhenEmpty = chartLoading
-        )
+        binding.chartMini.isClickable = false
+        binding.chartMini.isFocusable = false
+        val chart = binding.chartMini
+        val bind = {
+            ChartHelper.bindMetricChart(
+                chart = chart,
+                context = binding.root.context,
+                primary = chartPoints,
+                threshold = threshold,
+                emptyText = if (chartLoading) {
+                    binding.root.context.getString(R.string.chart_loading)
+                } else {
+                    binding.root.context.getString(R.string.chart_no_data)
+                },
+                interactive = false,
+                keepExistingWhenEmpty = chartLoading
+            )
+        }
+        if (chart.width > 0 && chart.height > 0) bind() else chart.post { bind() }
     }
 
     private fun inferThreshold(incident: Incident): Float? {

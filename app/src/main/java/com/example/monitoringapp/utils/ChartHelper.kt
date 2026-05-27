@@ -119,7 +119,21 @@ object ChartHelper {
             )
         }
 
-        chart.invalidate()
+        refreshChartViewport(chart)
+    }
+
+    /** Перерисовка после смены ориентации / layout (когда View только что создан). */
+    private fun refreshChartViewport(chart: LineChart) {
+        val redraw = Runnable {
+            chart.notifyDataSetChanged()
+            chart.fitScreen()
+            chart.invalidate()
+        }
+        if (chart.width > 0 && chart.height > 0) {
+            redraw.run()
+        } else {
+            chart.post(redraw)
+        }
     }
 
     private fun applyChartColors(chart: LineChart, context: Context) {

@@ -75,7 +75,9 @@ private fun IncidentDto.resolveExpr(): String? =
         ?: metricName?.trim()?.takeIf { IncidentDisplayHelper.looksLikeExpr(it) }
 
 private fun IncidentDto.resolvePromql(): String? =
-    resolveExpr() ?: promql?.trim()?.takeIf { it.isNotEmpty() }
+    resolveExpr()
+        ?: promql?.trim()?.takeIf { it.isNotEmpty() }
+        ?: metricName?.trim()?.takeIf { it.isNotEmpty() }
 
 private fun IncidentDto.resolveMetricValue(): String? =
     sequenceOf(metricValue, value, currentValue)

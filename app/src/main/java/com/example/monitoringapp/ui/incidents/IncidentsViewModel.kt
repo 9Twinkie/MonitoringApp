@@ -9,6 +9,7 @@ import com.example.monitoringapp.domain.model.Incident
 import com.example.monitoringapp.domain.model.IncidentChartData
 import com.example.monitoringapp.domain.model.IncidentStatus
 import com.example.monitoringapp.domain.repository.AuthRepository
+import com.example.monitoringapp.domain.repository.FavoriteRepository
 import com.example.monitoringapp.domain.repository.IncidentRepository
 import com.example.monitoringapp.utils.DashboardEnricher
 import com.example.monitoringapp.utils.TargetMatcher
@@ -28,7 +29,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-enum class IncidentTab { ACTIVE, IN_PROGRESS, HISTORY }
+enum class IncidentTab { ACTIVE, IN_PROGRESS, FAVORITES, HISTORY }
 
 data class FeaturedIncidentUi(
     val incident: Incident?,
@@ -62,6 +63,7 @@ data class AlertsScreenState(
 class IncidentsViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val incidentRepository: IncidentRepository,
+    private val favoriteRepository: FavoriteRepository,
     private val authRepository: AuthRepository,
     eventBus: NotificationEventBus
 ) : ViewModel() {
@@ -98,13 +100,18 @@ class IncidentsViewModel @Inject constructor(
 
     private val filteredIncidents = combine(
         incidentRepository.incidentsFlow.debounce(250),
+        favoriteRepository.favoritesFlow,
         _tab,
         _searchQuery
-    ) { all, tab, query ->
+    ) { all, favorites, tab, query ->
         val scoped = all.filter { matchesObjectFilter(it) }
         val byTab = when (tab) {
             IncidentTab.ACTIVE -> scoped.filter { it.matchesActiveTab() }
             IncidentTab.IN_PROGRESS -> scoped.filter { it.matchesInProgressTab() }
+            IncidentTab.FAVORITES -> scoped.filter { incident ->
+                incident.status != IncidentStatus.CLOSED &&
+                    favoriteRepository.isFavoriteIncident(incident, favorites)
+            }
             IncidentTab.HISTORY -> scoped.filter { it.status == IncidentStatus.CLOSED }
         }
         DashboardEnricher.sortIncidents(
