@@ -1,11 +1,14 @@
 package com.example.monitoringapp.data.repository
 
 import com.example.monitoringapp.data.api.MonitoringApi
+import com.example.monitoringapp.data.local.TokenStorage
 import com.example.monitoringapp.data.local.dao.IncidentDao
 import com.example.monitoringapp.data.local.dao.MetricCacheDao
 import com.example.monitoringapp.data.local.entity.MetricCacheEntity
 import com.example.monitoringapp.data.mapper.ChartDataMapper
 import com.example.monitoringapp.data.mapper.ChartRangeMapper
+import com.example.monitoringapp.data.mapper.MetricSearchJsonParser
+import com.example.monitoringapp.data.mapper.PrometheusOverviewJsonParser
 import com.example.monitoringapp.domain.model.ChartTimeRange
 import com.example.monitoringapp.data.mapper.toDomain
 import com.example.monitoringapp.domain.model.MetricPoint
@@ -14,11 +17,13 @@ import com.example.monitoringapp.domain.model.DashboardSummary
 import com.example.monitoringapp.domain.model.IncidentSeverity
 import com.example.monitoringapp.domain.model.IncidentStatus
 import com.example.monitoringapp.domain.model.MetricOverview
-import com.example.monitoringapp.domain.model.MetricSeries
 import com.example.monitoringapp.domain.model.MonitoringObject
 import com.example.monitoringapp.domain.repository.MetricsRepository
+import com.example.monitoringapp.utils.ExporterObjectFilter
+import com.example.monitoringapp.utils.PromqlSearchHelper
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -29,8 +34,21 @@ class MetricsRepositoryImpl @Inject constructor(
     private val metricCacheDao: MetricCacheDao,
     private val incidentDao: IncidentDao,
     private val networkMonitor: NetworkMonitor,
+    private val tokenStorage: TokenStorage,
     private val json: Json
 ) : MetricsRepository {
+
+    override fun getLastChartQuery(): String? = tokenStorage.getLastMetricsQuery()
+
+    override fun setLastChartQuery(query: String?) {
+        tokenStorage.setLastMetricsQuery(query)
+    }
+
+    override fun getLastChartRangeMinutes(): Int = tokenStorage.getLastMetricsRangeMinutes()
+
+    override fun setLastChartRangeMinutes(minutes: Int) {
+        tokenStorage.setLastMetricsRangeMinutes(minutes)
+    }
 
     override suspend fun getOverview(): Result<MetricOverview> {
         if (!networkMonitor.checkOnline()) {
@@ -38,27 +56,30 @@ class MetricsRepositoryImpl @Inject constructor(
             return Result.failure(IllegalStateException("Нет сети"))
         }
         return runCatching {
-            val dto = api.getMetricsOverview()
-            val overview = dto.toDomain()
+            val body = api.getMetricsOverviewRaw().string()
+            if (body.isBlank()) error("Пустой ответ overview")
             metricCacheDao.save(
                 MetricCacheEntity(
-                    json = json.encodeToString(dto),
+                    json = body,
                     cachedAt = System.currentTimeMillis()
                 )
             )
-            overview
+            parseOverviewBody(body)
         }.recoverCatching {
             getCachedOverview()?.let { cached -> return Result.success(cached) }
             throw it
         }
     }
 
+    private fun parseOverviewBody(body: String): MetricOverview {
+        PrometheusOverviewJsonParser.parse(json, body)?.let { return it }
+        return json.decodeFromString<com.example.monitoringapp.data.model.PrometheusOverviewDto>(body)
+            .toDomain()
+    }
+
     override suspend fun getCachedOverview(): MetricOverview? {
         val entity = metricCacheDao.get() ?: return null
-        return runCatching {
-            json.decodeFromString<com.example.monitoringapp.data.model.PrometheusOverviewDto>(entity.json)
-                .toDomain()
-        }.getOrNull()
+        return runCatching { parseOverviewBody(entity.json) }.getOrNull()
     }
 
     override suspend fun buildDashboardSummary(overview: MetricOverview?): DashboardSummary {
@@ -68,92 +89,49 @@ class MetricsRepositoryImpl @Inject constructor(
                 !it.status.equals(IncidentStatus.CLOSED.name, ignoreCase = true)
         }
 
-        val prometheusOverview = overview ?: getCachedOverview()
-        if (prometheusOverview != null && hasPrometheusData(prometheusOverview)) {
-            return buildFromPrometheus(prometheusOverview, critical)
+        val sources = linkedSetOf<MetricOverview>()
+        overview?.let { sources.add(it) }
+        getCachedOverview()?.let { sources.add(it) }
+
+        for (source in sources) {
+            val objects = buildObjects(source)
+            if (objects.isNotEmpty()) {
+                return summaryFromObjects(objects, critical)
+            }
         }
 
-        return buildFromIncidents(incidents, critical)
+        // Только Prometheus-объекты. Инциденты — на вкладке «Алерты», не здесь.
+        return DashboardSummary(
+            criticalCount = critical,
+            serversOnline = 0,
+            serversTotal = 0,
+            objects = emptyList()
+        )
     }
 
-    private fun hasPrometheusData(overview: MetricOverview): Boolean =
-        overview.targets.isNotEmpty() ||
-            overview.series.isNotEmpty() ||
-            overview.totalTargets != null ||
-            overview.upTargets != null
-
-    private fun buildFromPrometheus(
-        overview: MetricOverview,
+    private fun summaryFromObjects(
+        objects: List<MonitoringObject>,
         criticalCount: Int
     ): DashboardSummary {
-        val objects = buildObjects(overview)
-        val total = overview.totalTargets
-            ?: objects.size.takeIf { it > 0 }
-            ?: 0
-        val online = overview.upTargets
-            ?: objects.count { it.isHealthy }
-
+        val online = objects.count { it.isHealthy }
         return DashboardSummary(
             criticalCount = criticalCount,
             serversOnline = online,
-            serversTotal = total,
+            serversTotal = objects.size,
             objects = objects
         )
     }
 
     private fun buildObjects(overview: MetricOverview): List<MonitoringObject> {
-        if (overview.targets.isNotEmpty()) {
-            return overview.targets.map { target ->
-                MonitoringObject(
-                    name = target.name,
-                    host = target.host,
-                    status = if (target.isUp) "UP" else "DOWN",
-                    metricSummary = if (target.isUp) "online" else "offline",
-                    isHealthy = target.isUp
-                )
-            }
-        }
-
-        return overview.series.map { series -> seriesToObject(series) }
-    }
-
-    private fun seriesToObject(series: MetricSeries): MonitoringObject {
-        val lastValue = series.points.lastOrNull()?.value
-        val healthy = when {
-            lastValue == null -> true
-            series.threshold == null -> true
-            else -> lastValue < series.threshold
-        }
-        return MonitoringObject(
-            name = series.name,
-            host = series.name,
-            status = if (healthy) "OK" else "ALERT",
-            metricSummary = lastValue?.let { "%.0f".format(it) } ?: "—",
-            isHealthy = healthy
-        )
-    }
-
-    private fun buildFromIncidents(
-        incidents: List<com.example.monitoringapp.data.local.entity.IncidentEntity>,
-        criticalCount: Int
-    ): DashboardSummary {
-        val objects = incidents.take(10).map {
+        return ExporterObjectFilter.filterTargets(overview.targets).map { target ->
             MonitoringObject(
-                name = it.title,
-                host = it.host,
-                status = it.status,
-                metricSummary = it.metricValue ?: "—",
-                isHealthy = !it.severity.equals(IncidentSeverity.CRITICAL.name, ignoreCase = true)
+                name = target.name,
+                host = target.host,
+                status = if (target.isUp) "UP" else "DOWN",
+                metricSummary = if (target.isUp) "online" else "offline",
+                isHealthy = target.isUp
             )
         }
-        val healthy = objects.count { it.isHealthy }
-        val total = objects.size
-        return DashboardSummary(
-            criticalCount = criticalCount,
-            serversOnline = healthy,
-            serversTotal = if (total > 0) total else 0,
-            objects = objects
-        )
     }
 
     override suspend fun loadMetricRange(query: String, rangeMinutes: Int): Result<List<MetricPoint>> {
@@ -161,8 +139,7 @@ class MetricsRepositoryImpl @Inject constructor(
             return Result.failure(IllegalStateException("Нет сети"))
         }
         return runCatching {
-            val range = ChartTimeRange.entries.firstOrNull { it.minutes == rangeMinutes }
-                ?: ChartTimeRange.HOUR
+            val range = ChartTimeRange.fromMinutes(rangeMinutes)
             requestRange(query, range)?.let { return@runCatching it }
             if (rangeMinutes < 60) {
                 requestRange(query, ChartTimeRange.HOUR)?.let {
@@ -212,4 +189,73 @@ class MetricsRepositoryImpl @Inject constructor(
 
     private fun parseRange(dto: com.example.monitoringapp.data.model.PrometheusQueryRangeDto?): List<MetricPoint>? =
         dto?.let { ChartDataMapper.fromPrometheusRange(it) }?.takeIf { it.isNotEmpty() }
+
+    override suspend fun searchMetricNames(query: String, limit: Int): Result<List<String>> {
+        if (!networkMonitor.checkOnline()) {
+            return Result.failure(IllegalStateException("Нет сети"))
+        }
+        val trimmed = query.trim()
+        if (trimmed.length < 2) return Result.success(emptyList())
+        return runCatching {
+            val body = api.getMetricNamesRaw(match = trimmed, q = trimmed, limit = limit).string()
+            MetricSearchJsonParser.parse(json, body)
+        }
+    }
+
+    override suspend fun suggestPromql(query: String, limit: Int): Result<List<String>> {
+        if (!networkMonitor.checkOnline()) {
+            return Result.failure(IllegalStateException("Нет сети"))
+        }
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) return Result.success(emptyList())
+        return runCatching {
+            val body = api.getMetricSuggestRaw(q = trimmed, query = trimmed, limit = limit).string()
+            MetricSearchJsonParser.parse(json, body)
+        }
+    }
+
+    override suspend fun suggestLabelValues(label: String, prefix: String, limit: Int): Result<List<String>> {
+        if (!networkMonitor.checkOnline()) {
+            return Result.failure(IllegalStateException("Нет сети"))
+        }
+        return runCatching {
+            val body = api.getLabelValuesRaw(
+                label = label,
+                match = prefix.ifBlank { null },
+                q = prefix.ifBlank { null },
+                limit = limit
+            ).string()
+            MetricSearchJsonParser.parse(json, body)
+        }
+    }
+
+    override suspend fun searchMetricSuggestions(query: String, limit: Int): Result<List<String>> {
+        if (!networkMonitor.checkOnline()) {
+            return Result.failure(IllegalStateException("Нет сети"))
+        }
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) return Result.success(emptyList())
+
+        PromqlSearchHelper.detectLabelValueCompletion(trimmed)?.let { completion ->
+            return suggestLabelValues(completion.label, completion.valuePrefix, limit).map { values ->
+                values.map { value ->
+                    PromqlSearchHelper.applyLabelValue(trimmed, completion.label, value)
+                }
+            }
+        }
+
+        return runCatching {
+            coroutineScope {
+                val namesDeferred = async {
+                    searchMetricNames(trimmed, limit).getOrElse { emptyList() }
+                }
+                val suggestDeferred = async {
+                    suggestPromql(trimmed, limit).getOrElse { emptyList() }
+                }
+                (suggestDeferred.await() + namesDeferred.await())
+                    .distinct()
+                    .take(limit)
+            }
+        }
+    }
 }

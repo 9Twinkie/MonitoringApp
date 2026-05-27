@@ -1,8 +1,10 @@
 package com.example.monitoringapp.ui.metrics
 
+import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.monitoringapp.R
 import com.example.monitoringapp.data.mapper.ChartDataMapper
 import com.example.monitoringapp.domain.model.ChartTimeRange
 import com.example.monitoringapp.domain.model.Incident
@@ -13,7 +15,9 @@ import com.example.monitoringapp.domain.repository.IncidentRepository
 import com.example.monitoringapp.domain.repository.MetricsRepository
 import com.example.monitoringapp.utils.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -38,7 +42,8 @@ data class MetricsNavArgs(
 class MetricsViewModel @Inject constructor(
     private val metricsRepository: MetricsRepository,
     private val incidentRepository: IncidentRepository,
-    savedStateHandle: SavedStateHandle
+    savedStateHandle: SavedStateHandle,
+    @ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
     private var navIncidentId: Long = savedStateHandle.get<Long>("incidentId") ?: -1L
@@ -47,33 +52,62 @@ class MetricsViewModel @Inject constructor(
 
     private var appliedArgsKey: String? = null
     private var chartJob: Job? = null
+    private var searchJob: Job? = null
 
-    private val _options = MutableStateFlow<List<MetricChartOption>>(emptyList())
-    val options: StateFlow<List<MetricChartOption>> = _options.asStateFlow()
+    private val _queryInput = MutableStateFlow("")
+    val queryInput: StateFlow<String> = _queryInput.asStateFlow()
 
-    private val _selectedIndex = MutableStateFlow(0)
-    val selectedIndex: StateFlow<Int> = _selectedIndex.asStateFlow()
+    private val _suggestions = MutableStateFlow<List<String>>(emptyList())
+    val suggestions: StateFlow<List<String>> = _suggestions.asStateFlow()
 
     private val _chartPoints = MutableStateFlow<UiState<List<MetricPoint>>>(UiState.Loading)
     val chartPoints: StateFlow<UiState<List<MetricPoint>>> = _chartPoints.asStateFlow()
 
-    private val _selectedRange = MutableStateFlow(ChartTimeRange.HOUR)
+    private val _selectedRange = MutableStateFlow(
+        ChartTimeRange.fromMinutes(metricsRepository.getLastChartRangeMinutes())
+    )
     val selectedRange: StateFlow<ChartTimeRange> = _selectedRange.asStateFlow()
 
     private var activeThreshold: Float? = null
+    private var suppressSearch = false
 
     init {
-        onScreenVisible(MetricsNavArgs(navIncidentId, navQuery, navThreshold))
+        val navArgs = MetricsNavArgs(navIncidentId, navQuery, navThreshold)
+        if (hasNavIntent(navArgs)) {
+            onScreenVisible(navArgs)
+        } else {
+            restoreSessionOrLoadDefaults()
+        }
     }
 
     fun onScreenVisible(args: MetricsNavArgs) {
-        val key = "${args.incidentId}|${args.metricQuery}|${args.threshold}"
-        if (key == appliedArgsKey) return
-        appliedArgsKey = key
-        navIncidentId = args.incidentId
-        navQuery = args.metricQuery
-        navThreshold = args.threshold
-        _selectedIndex.value = 0
+        if (hasNavIntent(args)) {
+            val key = "${args.incidentId}|${args.metricQuery}|${args.threshold}"
+            if (key == appliedArgsKey) return
+            appliedArgsKey = key
+            navIncidentId = args.incidentId
+            navQuery = args.metricQuery
+            navThreshold = args.threshold
+            load()
+            return
+        }
+
+        if (appliedArgsKey == SESSION_KEY && _chartPoints.value is UiState.Success) return
+
+        val saved = metricsRepository.getLastChartQuery()
+        if (!saved.isNullOrBlank()) {
+            appliedArgsKey = SESSION_KEY
+            if (_queryInput.value != saved) {
+                _queryInput.value = saved
+            }
+            if (_chartPoints.value !is UiState.Success) {
+                executeQuery(saved)
+            }
+            return
+        }
+
+        if (appliedArgsKey != null) return
+        appliedArgsKey = "default"
         load()
     }
 
@@ -93,19 +127,15 @@ class MetricsViewModel @Inject constructor(
                     showIncident(incident)
                     return@launch
                 }
-                val threshold = navThreshold.takeIf { it >= 0f }
                 val promql = ChartDataMapper.buildQuery(queryFromNav) ?: queryFromNav
-                _options.value = listOf(
-                    MetricChartOption(queryFromNav, promql, threshold)
-                )
-                loadChartForOption(_options.value.first())
+                setQueryAndRun(promql, navThreshold.takeIf { it >= 0f })
                 return@launch
             }
 
             val activeIncident = incidentRepository.incidentsFlow.first()
                 .firstOrNull { it.status != IncidentStatus.CLOSED }
             if (activeIncident != null) {
-                showIncident(activeIncident, includeOverview = true)
+                showIncident(activeIncident)
                 return@launch
             }
 
@@ -113,62 +143,93 @@ class MetricsViewModel @Inject constructor(
         }
     }
 
-    fun selectSeries(index: Int) {
-        _selectedIndex.value = index
-        reloadCurrentChart()
+    fun onQueryInputChanged(text: String) {
+        if (suppressSearch) return
+        _queryInput.value = text
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            delay(250)
+            fetchSuggestions(text)
+        }
+    }
+
+    fun selectSuggestion(value: String) {
+        setQueryAndRun(value)
+    }
+
+    fun executeQuery(query: String? = _queryInput.value) {
+        val trimmed = query?.trim().orEmpty()
+        if (trimmed.isEmpty()) return
+        metricsRepository.setLastChartQuery(trimmed)
+        metricsRepository.setLastChartRangeMinutes(_selectedRange.value.minutes)
+        appliedArgsKey = SESSION_KEY
+        chartJob?.cancel()
+        chartJob = viewModelScope.launch {
+            loadChartForPromql(trimmed)
+        }
     }
 
     fun selectRange(range: ChartTimeRange) {
         if (_selectedRange.value == range) return
         _selectedRange.value = range
-        reloadCurrentChart()
+        metricsRepository.setLastChartRangeMinutes(range.minutes)
+        executeQuery()
     }
-
-    fun currentOption(): MetricChartOption? =
-        _options.value.getOrNull(_selectedIndex.value)
 
     fun currentThreshold(): Float? = activeThreshold
 
-    private fun reloadCurrentChart() {
-        val option = currentOption() ?: return
-        chartJob?.cancel()
-        chartJob = viewModelScope.launch {
-            loadChartForOption(option)
+    private fun restoreSessionOrLoadDefaults() {
+        val saved = metricsRepository.getLastChartQuery()
+        if (!saved.isNullOrBlank()) {
+            appliedArgsKey = SESSION_KEY
+            _queryInput.value = saved
+            executeQuery(saved)
+            return
         }
+        onScreenVisible(MetricsNavArgs())
+    }
+
+    private fun hasNavIntent(args: MetricsNavArgs): Boolean =
+        args.incidentId > 0L || !args.metricQuery.isNullOrBlank()
+
+    private fun setQueryAndRun(promql: String, threshold: Float? = null) {
+        suppressSearch = true
+        _queryInput.value = promql
+        activeThreshold = threshold
+        suppressSearch = false
+        _suggestions.value = emptyList()
+        executeQuery(promql)
+    }
+
+    private suspend fun fetchSuggestions(query: String) {
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) {
+            _suggestions.value = emptyList()
+            return
+        }
+        metricsRepository.searchMetricSuggestions(trimmed).fold(
+            onSuccess = { list -> _suggestions.value = list },
+            onFailure = { _suggestions.value = emptyList() }
+        )
     }
 
     private fun emptyRangeMessage(): String {
-        val minutes = _selectedRange.value.minutes
-        return if (minutes >= 60) {
-            "Нет данных за последний час"
-        } else {
-            "Нет данных за последние $minutes мин"
-        }
+        val range = _selectedRange.value
+        return appContext.getString(
+            R.string.chart_no_data_range,
+            appContext.getString(range.labelRes)
+        )
     }
 
-    private suspend fun showIncident(incident: Incident, includeOverview: Boolean = false) {
-        val label = incident.host.takeIf { it.isNotBlank() && it != "—" }
+    private suspend fun showIncident(incident: Incident) {
+        val promql = sequenceOf(
+            incident.metricExpr,
+            ChartDataMapper.buildQuery(incident.metricName),
+            incident.metricName
+        ).firstOrNull { !it.isNullOrBlank() }
             ?: incident.title
-        val promql = ChartDataMapper.buildQuery(incident.metricName)
-            ?: incident.metricName
-            ?: label
         val threshold = incident.threshold ?: navThreshold.takeIf { it >= 0f }
-        activeThreshold = threshold
-
-        val incidentOption = MetricChartOption(
-            label = label,
-            query = promql,
-            threshold = threshold,
-            incidentId = incident.id
-        )
-        _options.value = if (includeOverview) {
-            buildOverviewOptions() + incidentOption
-        } else {
-            listOf(incidentOption)
-        }.distinctBy { it.query }
-        _selectedIndex.value = _options.value.indexOfFirst { it.incidentId == incident.id }
-            .takeIf { it >= 0 } ?: 0
-        loadChartForOption(_options.value[_selectedIndex.value])
+        setQueryAndRun(promql, threshold)
     }
 
     private suspend fun loadFromOverview() {
@@ -186,53 +247,38 @@ class MetricsViewModel @Inject constructor(
     }
 
     private suspend fun applyOverview(overview: MetricOverview) {
-        val items = buildOptions(overview)
-        _options.value = items
-        if (items.isNotEmpty()) {
-            loadChart(0)
+        val first = buildOptions(overview).firstOrNull()
+        if (first != null) {
+            setQueryAndRun(first.query, first.threshold)
         } else {
             _chartPoints.value = UiState.Error("Нет метрик")
         }
     }
 
-    private suspend fun buildOverviewOptions(): List<MetricChartOption> {
-        val overview = metricsRepository.getCachedOverview()
-            ?: metricsRepository.getOverview().getOrNull()
-            ?: return emptyList()
-        return buildOptions(overview)
-    }
-
-    private fun loadChart(index: Int) {
-        _selectedIndex.value = index
-        reloadCurrentChart()
-    }
-
-    private suspend fun loadChartForOption(option: MetricChartOption) {
-        val rangeMinutes = _selectedRange.value.minutes
-        activeThreshold = option.threshold
+    private suspend fun loadChartForPromql(promql: String) {
+        val normalized = ChartDataMapper.buildQuery(promql) ?: promql
         _chartPoints.value = UiState.Loading
 
-        option.incidentId?.let { id ->
-            incidentRepository.getIncident(id)?.let { incident ->
-                loadIncidentChart(incident)
-                return
-            }
-        }
-
-        findIncidentByMetric(option.query)?.let { incident ->
+        findIncidentByMetric(normalized)?.let { incident ->
+            activeThreshold = incident.threshold ?: activeThreshold
             loadIncidentChart(incident)
             return
         }
 
-        val points = metricsRepository.loadMetricRange(option.query, rangeMinutes).getOrElse { error ->
-            _chartPoints.value = UiState.Error(error.message ?: "Не удалось загрузить график")
-            return
-        }
-        if (points.isEmpty()) {
-            _chartPoints.value = UiState.Error(emptyRangeMessage())
-        } else {
-            _chartPoints.value = UiState.Success(points)
-        }
+        val rangeMinutes = _selectedRange.value.minutes
+        metricsRepository.loadMetricRange(normalized, rangeMinutes).fold(
+            onSuccess = { points ->
+                if (points.isEmpty()) {
+                    _chartPoints.value = UiState.Error(emptyRangeMessage())
+                } else {
+                    activeThreshold = inferThreshold(normalized)
+                    _chartPoints.value = UiState.Success(points)
+                }
+            },
+            onFailure = {
+                _chartPoints.value = UiState.Error(it.message ?: "Не удалось загрузить график")
+            }
+        )
     }
 
     private suspend fun loadIncidentChart(incident: Incident) {
@@ -277,11 +323,17 @@ class MetricsViewModel @Inject constructor(
         val normalized = ChartDataMapper.buildQuery(query) ?: query
         return incidentRepository.incidentsFlow.first().firstOrNull { incident ->
             val name = incident.metricName ?: return@firstOrNull false
+            val expr = incident.metricExpr
             name == query ||
                 name == normalized ||
+                expr == query ||
+                expr == normalized ||
                 ChartDataMapper.buildQuery(name) == normalized
         }
     }
+
+    private fun inferThreshold(promql: String): Float? =
+        if (promql.trim().startsWith("up", ignoreCase = true)) 0.5f else null
 
     private fun buildOptions(overview: MetricOverview): List<MetricChartOption> {
         val items = mutableListOf<MetricChartOption>()
@@ -295,5 +347,9 @@ class MetricsViewModel @Inject constructor(
             items.add(MetricChartOption(series.name, query, series.threshold ?: 0.5f))
         }
         return items.distinctBy { it.query }
+    }
+
+    companion object {
+        private const val SESSION_KEY = "session"
     }
 }

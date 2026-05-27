@@ -1,7 +1,6 @@
 package com.example.monitoringapp.utils
 
 import android.content.Context
-import android.graphics.Color
 import androidx.core.content.ContextCompat
 import com.example.monitoringapp.R
 import com.example.monitoringapp.domain.model.MetricPoint
@@ -33,6 +32,8 @@ object ChartHelper {
         chart.xAxis.setDrawGridLines(false)
         chart.axisLeft.setDrawGridLines(true)
         chart.setNoDataText(context.getString(R.string.chart_loading))
+        chart.setBackgroundColor(ContextCompat.getColor(context, R.color.chart_background))
+        applyChartColors(chart, context)
     }
 
     fun bindMetricChart(
@@ -49,6 +50,8 @@ object ChartHelper {
             chart.animateX(0)
             chart.animateY(0)
             chart.setTag(tagSetup, true)
+        } else {
+            applyChartColors(chart, context)
         }
 
         if (primary.isEmpty()) {
@@ -65,8 +68,11 @@ object ChartHelper {
 
         val sorted = primary.sortedBy { it.timestamp }
         val minTs = sorted.first().timestamp
-        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val maxTs = sorted.last().timestamp
+        val spanMs = (maxTs - minTs).coerceAtLeast(0L)
+        val timeFormat = timeFormatForSpan(spanMs)
         val primaryColor = ContextCompat.getColor(context, R.color.chart_line_primary)
+        val axisTextColor = ContextCompat.getColor(context, R.color.chart_axis_text)
 
         val entries = sorted.map { point ->
             val xMinutes = (point.timestamp - minTs) / 60_000f
@@ -75,21 +81,27 @@ object ChartHelper {
 
         val dataSet = LineDataSet(entries, context.getString(R.string.chart_series_metric)).apply {
             color = primaryColor
-            setCircleColor(primaryColor)
-            lineWidth = 2f
-            circleRadius = if (interactive) 3f else 2f
-            setDrawCircleHole(false)
+            lineWidth = if (interactive) 2f else 1.5f
             mode = LineDataSet.Mode.LINEAR
+            setDrawCircles(false)
+            setDrawCircleHole(false)
+            setDrawValues(false)
             setDrawFilled(false)
-            valueTextSize = 0f
+            highLightColor = primaryColor
+            setDrawHighlightIndicators(interactive)
         }
 
-        chart.xAxis.valueFormatter = object : ValueFormatter() {
-            override fun getFormattedValue(value: Float): String {
-                val ts = minTs + (value * 60_000).toLong()
-                return timeFormat.format(Date(ts))
+        chart.xAxis.apply {
+            valueFormatter = object : ValueFormatter() {
+                override fun getFormattedValue(value: Float): String {
+                    val ts = minTs + (value * 60_000).toLong()
+                    return timeFormat.format(Date(ts))
+                }
             }
+            textColor = axisTextColor
         }
+        chart.axisLeft.textColor = axisTextColor
+        chart.legend.textColor = axisTextColor
 
         chart.data = LineData(dataSet)
 
@@ -97,15 +109,36 @@ object ChartHelper {
         threshold?.let { value ->
             chart.axisLeft.addLimitLine(
                 LimitLine(value).apply {
-                    lineColor = Color.RED
+                    lineColor = ContextCompat.getColor(context, R.color.chart_threshold)
                     lineWidth = 1.5f
                     enableDashedLine(10f, 8f, 0f)
                     label = context.getString(R.string.chart_threshold_label)
+                    textColor = axisTextColor
+                    textSize = 10f
                 }
             )
         }
 
         chart.invalidate()
+    }
+
+    private fun applyChartColors(chart: LineChart, context: Context) {
+        val axisText = ContextCompat.getColor(context, R.color.chart_axis_text)
+        val gridColor = ContextCompat.getColor(context, R.color.chart_grid)
+        chart.setNoDataTextColor(axisText)
+        chart.xAxis.textColor = axisText
+        chart.axisLeft.textColor = axisText
+        chart.axisLeft.gridColor = gridColor
+        chart.legend.textColor = axisText
+    }
+
+    private fun timeFormatForSpan(spanMs: Long): SimpleDateFormat {
+        val locale = Locale.getDefault()
+        return when {
+            spanMs > 90L * 24 * 60 * 60 * 1000 -> SimpleDateFormat("dd.MM.yy", locale)
+            spanMs > 2L * 24 * 60 * 60 * 1000 -> SimpleDateFormat("dd.MM HH:mm", locale)
+            else -> SimpleDateFormat("HH:mm", locale)
+        }
     }
 
     private fun chartSignature(points: List<MetricPoint>, threshold: Float?): String {

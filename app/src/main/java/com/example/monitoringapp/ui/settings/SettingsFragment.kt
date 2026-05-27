@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
@@ -25,6 +26,7 @@ class SettingsFragment : Fragment() {
     private var _binding: FragmentSettingsBinding? = null
     private val binding get() = _binding!!
     private val viewModel: SettingsViewModel by viewModels()
+    private var switchFromCode = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -37,16 +39,46 @@ class SettingsFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        binding.tvUsername.text = viewModel.username() ?: "—"
-        binding.tvRole.text = roleLabel(viewModel.userRole())
+        binding.header.tvHeaderTitle.setText(R.string.profile_title)
+        viewModel.refreshProfile()
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.baseUrl.collect { url ->
-                    if (binding.etServerUrl.text.isNullOrBlank()) {
-                        binding.etServerUrl.setText(url)
+                launch {
+                    viewModel.username.collect { name ->
+                        binding.tvUsername.text = name ?: "—"
                     }
                 }
+                launch {
+                    viewModel.userRole.collect { role ->
+                        binding.tvRole.text = roleLabel(role)
+                        binding.btnManageUsers.isVisible = role.isAdmin
+                    }
+                }
+                launch {
+                    viewModel.baseUrl.collect { url ->
+                        if (binding.etServerUrl.text.isNullOrBlank()) {
+                            binding.etServerUrl.setText(url)
+                        }
+                    }
+                }
+                launch {
+                    viewModel.notifyFavoritesOnly.collect { enabled ->
+                        switchFromCode = true
+                        binding.switchNotifyFavorites.isChecked = enabled
+                        switchFromCode = false
+                    }
+                }
+            }
+        }
+
+        binding.btnManageUsers.setOnClickListener {
+            findNavController().navigate(R.id.action_settings_to_users)
+        }
+
+        binding.switchNotifyFavorites.setOnCheckedChangeListener { _, checked ->
+            if (!switchFromCode) {
+                viewModel.setNotifyFavoritesOnly(checked)
             }
         }
 
@@ -66,6 +98,11 @@ class SettingsFragment : Fragment() {
                 .build()
             findNavController().navigate(R.id.loginFragment, null, options)
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        viewModel.refreshProfile()
     }
 
     private fun roleLabel(role: UserRole): String = when (role) {

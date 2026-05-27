@@ -8,6 +8,11 @@ object Constants {
     const val KEY_BASE_URL = "base_url"
     const val KEY_LOGGED_IN = "logged_in"
     const val KEY_USER_ROLE = "user_role"
+    const val KEY_USER_ID = "user_id"
+    const val KEY_NOTIFY_FAVORITES_ONLY = "notify_favorites_only"
+    const val KEY_DASHBOARD_FAVORITES_ONLY = "dashboard_favorites_only"
+    const val KEY_METRICS_LAST_QUERY = "metrics_last_query"
+    const val KEY_METRICS_RANGE_MINUTES = "metrics_range_minutes"
 
     const val WS_PATH = "/ws/notifications"
     const val NOTIFICATION_CHANNEL_ID = "monitoring_ws_channel"

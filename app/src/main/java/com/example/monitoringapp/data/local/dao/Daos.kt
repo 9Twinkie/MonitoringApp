@@ -4,6 +4,8 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
+import com.example.monitoringapp.data.local.entity.FavoriteEntity
 import com.example.monitoringapp.data.local.entity.IncidentEntity
 import com.example.monitoringapp.data.local.entity.MetricCacheEntity
 import com.example.monitoringapp.data.local.entity.PendingActionEntity
@@ -22,6 +24,12 @@ interface IncidentDao {
 
     @Query("DELETE FROM incidents")
     suspend fun clear()
+
+    @Transaction
+    suspend fun replaceAll(items: List<IncidentEntity>) {
+        clear()
+        insertAll(items)
+    }
 }
 
 @Dao
@@ -46,4 +54,19 @@ interface PendingActionDao {
 
     @Query("SELECT COUNT(*) FROM pending_actions")
     fun observeCount(): Flow<Int>
+}
+
+@Dao
+interface FavoriteDao {
+    @Query("SELECT * FROM favorites ORDER BY addedAt DESC")
+    fun observeAll(): Flow<List<FavoriteEntity>>
+
+    @Query("SELECT * FROM favorites WHERE targetKey = :key LIMIT 1")
+    suspend fun getByKey(key: String): FavoriteEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(entity: FavoriteEntity)
+
+    @Query("DELETE FROM favorites WHERE targetKey = :key")
+    suspend fun delete(key: String)
 }

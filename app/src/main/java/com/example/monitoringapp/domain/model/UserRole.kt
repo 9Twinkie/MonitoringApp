@@ -5,8 +5,16 @@ enum class UserRole {
     ADMIN,
     OTHER;
 
+    val isAdmin: Boolean get() = this == ADMIN
+
     /** Push для инженера и администратора; только «гость» без роли — без push. */
     fun receivesPushAlerts(): Boolean = this == ENGINEER || this == ADMIN
+
+    fun toApiRole(): String = when (this) {
+        ADMIN -> "ADMIN"
+        ENGINEER -> "ENGINEER"
+        OTHER -> "ENGINEER"
+    }
 
     companion object {
         fun fromRaw(raw: String?): UserRole {

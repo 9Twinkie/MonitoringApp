@@ -10,14 +10,9 @@
         android:layout_height="wrap_content"
         android:background="@color/primary">
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:padding="16dp"
-            android:text="@string/dashboard_title"
-            android:textColor="@color/white"
-            android:textSize="22sp"
-            android:textStyle="bold" />
+        <include
+            android:id="@+id/header"
+            layout="@layout/view_screen_header" />
     </com.google.android.material.appbar.AppBarLayout>
 
     <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
@@ -34,60 +29,85 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="16dp">
+                android:padding="@dimen/spacing_lg">
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/searchLayout"
+                    style="@style/Widget.Monitoring.Search"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    app:startIconDrawable="@android:drawable/ic_menu_search">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etSearch"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="@string/search_objects_hint"
+                        android:imeOptions="actionSearch"
+                        android:inputType="text"
+                        android:maxLines="1"
+                        android:textAppearance="@style/TextAppearance.Monitoring.Body" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipFavoritesOnly"
+                    style="@style/Widget.Monitoring.Chip.Filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/spacing_sm"
+                    android:checkable="true"
+                    android:text="@string/filter_favorites_only" />
 
                 <com.google.android.material.card.MaterialCardView
                     android:id="@+id/cardOffline"
-                    style="@style/Widget.Monitoring.Card"
+                    style="@style/Widget.Monitoring.Banner.Warning"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="12dp"
-                    android:visibility="gone"
-                    app:cardBackgroundColor="@color/severity_warning_bg">
+                    android:layout_marginTop="@dimen/spacing_md"
+                    android:visibility="gone">
 
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:padding="12dp"
+                        android:padding="@dimen/spacing_md"
                         android:text="@string/offline_mode"
-                        android:textColor="@color/severity_warning_text"
-                        android:textSize="13sp" />
+                        android:textAppearance="@style/TextAppearance.Monitoring.Body"
+                        android:textColor="@color/severity_warning_text" />
                 </com.google.android.material.card.MaterialCardView>
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/spacing_md"
                     android:orientation="horizontal">
 
                     <com.google.android.material.card.MaterialCardView
                         style="@style/Widget.Monitoring.Card"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_marginEnd="8dp"
+                        android:layout_marginEnd="@dimen/spacing_sm"
                         android:layout_weight="1">
 
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:orientation="vertical"
-                            android:padding="16dp">
+                            android:padding="@dimen/spacing_md">
 
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="@string/critical_incidents"
-                                android:textColor="@color/text_secondary"
-                                android:textSize="12sp" />
+                                android:textAppearance="@style/TextAppearance.Monitoring.Label" />
 
                             <TextView
                                 android:id="@+id/tvCriticalCount"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:layout_marginTop="4dp"
+                                android:layout_marginTop="@dimen/spacing_xs"
                                 android:text="0"
-                                android:textColor="@color/accent_red"
-                                android:textSize="32sp"
-                                android:textStyle="bold" />
+                                android:textAppearance="@style/TextAppearance.Monitoring.StatLarge"
+                                android:textColor="@color/status_error" />
                         </LinearLayout>
                     </com.google.android.material.card.MaterialCardView>
 
@@ -101,37 +121,34 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:orientation="vertical"
-                            android:padding="16dp">
+                            android:padding="@dimen/spacing_md">
 
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="@string/servers_status"
-                                android:textColor="@color/text_secondary"
-                                android:textSize="12sp" />
+                                android:textAppearance="@style/TextAppearance.Monitoring.Label" />
 
                             <TextView
                                 android:id="@+id/tvServersStatus"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:layout_marginTop="4dp"
+                                android:layout_marginTop="@dimen/spacing_xs"
                                 android:text="@string/loading"
-                                android:textColor="@color/accent_green"
-                                android:textSize="18sp"
-                                android:textStyle="bold" />
+                                android:textAppearance="@style/TextAppearance.Monitoring.Stat"
+                                android:textColor="@color/status_success" />
                         </LinearLayout>
                     </com.google.android.material.card.MaterialCardView>
                 </LinearLayout>
 
                 <TextView
+                    android:id="@+id/tvObjectsTitle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="20dp"
-                    android:layout_marginBottom="8dp"
+                    android:layout_marginTop="@dimen/spacing_lg"
+                    android:layout_marginBottom="@dimen/spacing_sm"
                     android:text="@string/monitoring_objects"
-                    android:textColor="@color/text_primary"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
+                    android:textAppearance="@style/TextAppearance.Monitoring.SectionTitle" />
 
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/rvObjects"
@@ -145,9 +162,9 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:gravity="center"
-                    android:padding="24dp"
+                    android:padding="@dimen/spacing_xl"
                     android:text="@string/empty_objects"
-                    android:textColor="@color/text_secondary"
+                    android:textAppearance="@style/TextAppearance.Monitoring.Body.Secondary"
                     android:visibility="gone" />
             </LinearLayout>
         </androidx.core.widget.NestedScrollView>

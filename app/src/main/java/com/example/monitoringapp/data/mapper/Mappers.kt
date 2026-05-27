@@ -11,26 +11,106 @@ import com.example.monitoringapp.data.model.UpMetricDto
 import com.example.monitoringapp.domain.model.Incident
 import com.example.monitoringapp.domain.model.IncidentSeverity
 import com.example.monitoringapp.domain.model.IncidentStatus
+import com.example.monitoringapp.domain.model.IncidentWorkflow
 import com.example.monitoringapp.domain.model.MetricOverview
 import com.example.monitoringapp.domain.model.MetricPoint
 import com.example.monitoringapp.domain.model.MetricSeries
 import com.example.monitoringapp.domain.model.PrometheusTarget
+import com.example.monitoringapp.utils.ExporterObjectFilter
+import com.example.monitoringapp.utils.IncidentDisplayHelper
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 
-fun IncidentDto.toDomain(): Incident = Incident(
-    id = id,
-    title = title ?: metricName ?: host ?: "Инцидент #$id",
-    host = host ?: extractJobFromMetric(metricName) ?: "—",
-    status = IncidentStatus.fromRaw(status),
-    severity = IncidentSeverity.fromRaw(severity),
-    metricName = metricName,
-    metricValue = metricValue,
-    createdAt = createdAt ?: timestamp,
-    rule = rule,
-    threshold = threshold?.toFloat(),
-    chartPoints = chartPointsFromIncidentDto(this)
+fun IncidentDto.toDomain(): Incident = IncidentWorkflow.normalize(
+    Incident(
+        id = id,
+        title = resolveAlertTitle(),
+        description = resolveDescription(),
+        host = resolveHost(),
+        status = IncidentStatus.fromRaw(status ?: incidentStatus ?: state),
+        severity = resolveSeverity(),
+        metricName = resolvePromql(),
+        metricExpr = resolveExpr(),
+        metricValue = resolveMetricValue(),
+        firedAt = resolveFiredAt(),
+        createdAt = createdAt ?: timestamp,
+        rule = rule?.trim()?.takeIf { it.isNotEmpty() && !IncidentDisplayHelper.looksLikeExpr(it) },
+        threshold = threshold?.toFloat(),
+        chartPoints = chartPointsFromIncidentDto(this),
+        assignedEngineerUsername = resolveAssignee(),
+        canAccept = canAccept == true || canTake == true,
+        canConfirm = canConfirm == true || canComplete == true,
+        canClose = canClose == true,
+        closeComment = resolveCloseComment(),
+        closedByUsername = closedByUsername ?: closedBy
+    )
 )
+
+private fun IncidentDto.resolveAlertTitle(): String =
+    sequenceOf(alertName, alertNameSnake, metricName, name, title)
+        .map { it?.trim() }
+        .firstOrNull { !it.isNullOrBlank() && !IncidentDisplayHelper.looksLikeExpr(it) }
+        ?.let { IncidentDisplayHelper.prettifyAlertName(it) }
+        ?: IncidentDisplayHelper.friendlyTitleFromMetric(metricName)
+        ?: extractJobFromMetric(resolvePromql())?.let { job -> "Алерт: $job" }
+        ?: host?.trim()?.takeIf { it.isNotEmpty() }
+        ?: "Инцидент #$id"
+
+private fun IncidentDto.resolveDescription(): String? =
+    sequenceOf(
+        description,
+        summary,
+        prometheusDescription,
+        prometheusDescriptionSnake,
+        prometheusSummary,
+        prometheusSummarySnake
+    )
+        .map { it?.trim() }
+        .firstOrNull { !it.isNullOrBlank() }
+
+private fun IncidentDto.resolveExpr(): String? =
+    sequenceOf(promql, expr, metricExpr, rule)
+        .map { it?.trim() }
+        .firstOrNull { !it.isNullOrBlank() && IncidentDisplayHelper.looksLikeExpr(it) }
+        ?: metricName?.trim()?.takeIf { IncidentDisplayHelper.looksLikeExpr(it) }
+
+private fun IncidentDto.resolvePromql(): String? =
+    resolveExpr() ?: promql?.trim()?.takeIf { it.isNotEmpty() }
+
+private fun IncidentDto.resolveMetricValue(): String? =
+    sequenceOf(metricValue, value, currentValue)
+        .map { it?.trim() }
+        .firstOrNull { !it.isNullOrBlank() && !IncidentDisplayHelper.looksLikeExpr(it) }
+
+/** Время срабатывания алерта в Prometheus (не время создания записи в БД). */
+private fun IncidentDto.resolveFiredAt(): String? =
+    sequenceOf(firedAt, startsAt, startAt, activeAt, timestamp)
+        .map { it?.trim() }
+        .firstOrNull { !it.isNullOrBlank() }
+
+private fun IncidentDto.resolveHost(): String =
+    host?.trim()?.takeIf { it.isNotEmpty() }
+        ?: extractJobFromMetric(resolvePromql())
+        ?: extractJobFromMetric(metricName?.takeIf { IncidentDisplayHelper.looksLikeExpr(it) })
+        ?: "—"
+
+private fun IncidentDto.resolveSeverity(): IncidentSeverity =
+    IncidentSeverity.fromRaw(
+        severity ?: prometheusSeverity ?: prometheusSeveritySnake
+    )
+
+private fun IncidentDto.resolveCloseComment(): String? =
+    sequenceOf(closeComment, resolutionComment, comment)
+        .firstOrNull { !it.isNullOrBlank() }
+
+private fun IncidentDto.resolveAssignee(): String? =
+    sequenceOf(
+        assignedEngineerUsername,
+        assignedEngineer,
+        assigneeUsername,
+        assignedTo,
+        engineerUsername
+    ).firstOrNull { !it.isNullOrBlank() }
 
 fun chartPointsFromIncidentDto(dto: IncidentDto): List<MetricPoint> =
     ChartDataMapper.fromPointDtos(dto.chartData)
@@ -58,7 +138,9 @@ fun PrometheusTargetDto.toDomain(): PrometheusTarget {
     val isUp = up == true ||
         status?.equals("UP", ignoreCase = true) == true ||
         status?.equals("ONLINE", ignoreCase = true) == true ||
-        health?.equals("UP", ignoreCase = true) == true
+        health?.equals("UP", ignoreCase = true) == true ||
+        health?.equals("up", ignoreCase = true) == true ||
+        health?.equals("healthy", ignoreCase = true) == true
     return PrometheusTarget(name = displayName, host = host, isUp = isUp)
 }
 
@@ -67,8 +149,14 @@ fun PrometheusTargetSampleDto.toDomain(): PrometheusTarget {
         ?: scrapePool?.takeIf { it.isNotBlank() }
         ?: "target"
     val host = scrapeUrl?.takeIf { it.isNotBlank() } ?: displayName
-    val isUp = health?.equals("up", ignoreCase = true) == true ||
-        health?.equals("healthy", ignoreCase = true) == true
+    val isUp = when {
+        health?.equals("up", ignoreCase = true) == true -> true
+        health?.equals("healthy", ignoreCase = true) == true -> true
+        health?.equals("UP", ignoreCase = true) == true -> true
+        health?.equals("down", ignoreCase = true) == true -> false
+        !lastError.isNullOrBlank() -> false
+        else -> false
+    }
     return PrometheusTarget(name = displayName, host = host, isUp = isUp)
 }
 
@@ -89,19 +177,21 @@ fun PrometheusOverviewDto.toDomain(): MetricOverview {
     val legacyTargets = (servers + hosts + items)
         .distinctBy { it.instance ?: it.name ?: it.job }
         .map { it.toDomain() }
-    val mappedTargets = when {
-        fromSamples.isNotEmpty() -> fromSamples
-        legacyTargets.isNotEmpty() -> legacyTargets
-        else -> emptyList()
-    }
+    val mappedTargets = ExporterObjectFilter.filterTargets(
+        when {
+            fromSamples.isNotEmpty() -> fromSamples
+            legacyTargets.isNotEmpty() -> legacyTargets
+            else -> emptyList()
+        }
+    )
 
     val up = block?.up ?: upCount ?: healthyTargets
         ?: mappedTargets.count { it.isUp }.takeIf { mappedTargets.isNotEmpty() }
     val down = block?.down ?: downCount
-    val total = block?.total ?: totalTargets
-        ?: if (up != null && down != null) up + down else null
-        ?: mappedTargets.size.takeIf { it > 0 }
+    val total = mappedTargets.size.takeIf { it > 0 }
+        ?: block?.total ?: totalTargets
 
+    // series/upMetrics/sampleNames — для вкладки «Графики», не для дашборда
     val metricSeries = when {
         series.isNotEmpty() -> series.map { it.toDomain() }
         upMetrics.isNotEmpty() -> upMetrics.mapNotNull { it.toSeries() }
@@ -112,7 +202,7 @@ fun PrometheusOverviewDto.toDomain(): MetricOverview {
         series = metricSeries,
         targets = mappedTargets,
         totalTargets = total,
-        upTargets = up,
+        upTargets = mappedTargets.count { it.isUp }.takeIf { mappedTargets.isNotEmpty() } ?: up,
         downTargets = down,
         updatedAt = updatedAt ?: System.currentTimeMillis()
     )
@@ -127,13 +217,22 @@ fun MetricSeriesDto.toDomain(): MetricSeries = MetricSeries(
 fun Incident.toEntity(json: Json): IncidentEntity = IncidentEntity(
     id = id,
     title = title,
+    description = description,
     host = host,
     status = status.name,
     severity = severity.name,
     metricName = metricName,
+    metricExpr = metricExpr,
     metricValue = metricValue,
+    firedAt = firedAt,
     createdAt = createdAt,
     rule = rule,
+    assignedEngineerUsername = assignedEngineerUsername,
+    canAccept = canAccept,
+    canConfirm = canConfirm,
+    canClose = canClose,
+    closeComment = closeComment,
+    closedByUsername = closedByUsername,
     chartJson = if (chartPoints.isEmpty()) null else json.encodeToString(
         ListSerializer(MetricPointDto.serializer()),
         chartPoints.map { MetricPointDto(timestamp = it.timestamp, value = it.value) }
@@ -149,16 +248,27 @@ fun IncidentEntity.toDomain(json: Json): Incident {
         }.getOrDefault(emptyList())
     } ?: emptyList()
 
-    return Incident(
-        id = id,
-        title = title,
-        host = host,
-        status = IncidentStatus.fromRaw(status),
-        severity = IncidentSeverity.fromRaw(severity),
-        metricName = metricName,
-        metricValue = metricValue,
-        createdAt = createdAt,
-        rule = rule,
-        chartPoints = points
+    return IncidentWorkflow.normalize(
+        Incident(
+            id = id,
+            title = title,
+            description = description,
+            host = host,
+            status = IncidentStatus.fromRaw(status),
+            severity = IncidentSeverity.fromRaw(severity),
+            metricName = metricName,
+            metricExpr = metricExpr,
+            metricValue = metricValue,
+            firedAt = firedAt,
+            createdAt = createdAt,
+            rule = rule,
+            assignedEngineerUsername = assignedEngineerUsername,
+            canAccept = canAccept,
+            canConfirm = canConfirm,
+            canClose = canClose,
+            closeComment = closeComment,
+            closedByUsername = closedByUsername,
+            chartPoints = points
+        )
     )
 }

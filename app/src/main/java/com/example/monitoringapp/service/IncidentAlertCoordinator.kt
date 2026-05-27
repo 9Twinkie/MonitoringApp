@@ -1,10 +1,12 @@
 package com.example.monitoringapp.service
 
 import com.example.monitoringapp.data.model.WsNotificationDto
+import com.example.monitoringapp.domain.model.FavoriteTarget
 import com.example.monitoringapp.domain.model.Incident
 import com.example.monitoringapp.domain.model.IncidentSeverity
 import com.example.monitoringapp.domain.model.IncidentStatus
 import com.example.monitoringapp.domain.repository.AuthRepository
+import com.example.monitoringapp.domain.repository.FavoriteRepository
 import com.example.monitoringapp.utils.NotificationHelper
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
@@ -13,69 +15,79 @@ import javax.inject.Singleton
 @Singleton
 class IncidentAlertCoordinator @Inject constructor(
     private val authRepository: AuthRepository,
+    private val favoriteRepository: FavoriteRepository,
     private val notificationHelper: NotificationHelper,
     private val json: Json
 ) {
 
     private val knownActiveIds = mutableSetOf<Long>()
-    private val lastNotifiedAt = mutableMapOf<Long, Long>()
     private var baselineEstablished = false
 
     fun resetSession() {
         knownActiveIds.clear()
-        lastNotifiedAt.clear()
         baselineEstablished = false
     }
 
     fun processAfterRefresh(
         incidents: List<Incident>,
-        wsRaw: String? = null
+        wsRaw: String? = null,
+        favorites: List<FavoriteTarget> = emptyList()
     ) {
         if (!authRepository.receivesPushAlerts()) return
 
         val active = incidents.filter { it.status != IncidentStatus.CLOSED }
         val activeIds = active.map { it.id }.toSet()
+        val closedIds = incidents.filter { it.status == IncidentStatus.CLOSED }.map { it.id }.toSet()
+        knownActiveIds.removeAll(closedIds)
 
         wsRaw?.let { raw ->
-            parseWs(raw)?.let { dto ->
-                if (isIncidentEvent(dto)) {
-                    val incident = dto.incidentId?.let { id -> active.find { it.id == id } }
-                        ?: active.maxByOrNull { it.id }
-                    if (incident != null && notifyIfAllowed(incident, message = wsText(dto))) {
-                        knownActiveIds.add(incident.id)
-                        baselineEstablished = true
-                        knownActiveIds.clear()
-                        knownActiveIds.addAll(activeIds)
-                        return
-                    }
-                }
-            }
+            handleWsEvent(raw, active, favorites)
         }
 
         if (!baselineEstablished) {
-            knownActiveIds.clear()
             knownActiveIds.addAll(activeIds)
             baselineEstablished = true
             return
         }
 
+        if (activeIds.isEmpty()) return
+
         val newIncidents = active.filter { it.id !in knownActiveIds }
         newIncidents.forEach { incident ->
-            notifyIfAllowed(incident, message = null)
+            if (notifyIfAllowed(incident, favorites, message = null)) {
+                knownActiveIds.add(incident.id)
+            }
         }
-
-        knownActiveIds.clear()
-        knownActiveIds.addAll(activeIds)
     }
 
-    private fun notifyIfAllowed(incident: Incident, message: String?): Boolean {
-        if (!notificationHelper.hasPostPermission()) return false
-        val now = System.currentTimeMillis()
-        val last = lastNotifiedAt[incident.id] ?: 0L
-        if (now - last < NOTIFY_COOLDOWN_MS) return false
-        lastNotifiedAt[incident.id] = now
+    private fun handleWsEvent(
+        raw: String,
+        active: List<Incident>,
+        favorites: List<FavoriteTarget>
+    ) {
+        val dto = parseWs(raw) ?: return
+        if (!isIncidentEvent(dto)) return
 
-        val title = "Новый инцидент"
+        val incidentId = dto.incidentId ?: return
+        if (incidentId in knownActiveIds) return
+
+        val incident = active.find { it.id == incidentId } ?: return
+        if (notifyIfAllowed(incident, favorites, message = wsText(dto))) {
+            knownActiveIds.add(incident.id)
+            baselineEstablished = true
+        }
+    }
+
+    private fun notifyIfAllowed(
+        incident: Incident,
+        favorites: List<FavoriteTarget>,
+        message: String?
+    ): Boolean {
+        if (!favoriteRepository.shouldNotifyForIncident(incident, favorites)) return false
+        if (!notificationHelper.hasPostPermission()) return false
+
+        val isFavorite = favoriteRepository.isFavoriteIncident(incident, favorites)
+        val title = if (isFavorite) "Избранный объект" else "Новый инцидент"
         val body = buildBody(incident, message)
         notificationHelper.showIncidentAlert(
             notificationId = (NOTIFICATION_ID_BASE + incident.id).toInt(),
@@ -90,10 +102,12 @@ class IncidentAlertCoordinator @Inject constructor(
         val severity = when (incident.severity) {
             IncidentSeverity.CRITICAL -> "Критический"
             IncidentSeverity.WARNING -> "Предупреждение"
-            IncidentSeverity.INFO -> "Информация"
-            IncidentSeverity.UNKNOWN -> "Инцидент"
+            IncidentSeverity.INFO -> "Низкий"
+            IncidentSeverity.UNKNOWN -> "Низкий"
         }
-        val metric = incident.metricName?.takeIf { it.isNotBlank() }
+        val metric = com.example.monitoringapp.utils.IncidentDisplayHelper
+            .metricExpr(incident)
+            .takeIf { it != "—" }
             ?: incident.title
         return "$severity: $metric"
     }
@@ -119,7 +133,6 @@ class IncidentAlertCoordinator @Inject constructor(
             ?: dto.metricName?.takeIf { it.isNotBlank() }
 
     companion object {
-        private const val NOTIFY_COOLDOWN_MS = 60_000L
         private const val NOTIFICATION_ID_BASE = 2_000
 
         private val IGNORED_WS_TYPES = setOf(

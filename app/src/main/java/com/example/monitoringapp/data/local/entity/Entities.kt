@@ -7,13 +7,22 @@ import androidx.room.PrimaryKey
 data class IncidentEntity(
     @PrimaryKey val id: Long,
     val title: String,
+    val description: String? = null,
     val host: String,
     val status: String,
     val severity: String,
     val metricName: String?,
+    val metricExpr: String? = null,
     val metricValue: String?,
+    val firedAt: String? = null,
     val createdAt: String?,
     val rule: String?,
+    val assignedEngineerUsername: String? = null,
+    val canAccept: Boolean = false,
+    val canConfirm: Boolean = false,
+    val canClose: Boolean = false,
+    val closeComment: String? = null,
+    val closedByUsername: String? = null,
     val chartJson: String?,
     val cachedAt: Long
 )
@@ -31,4 +40,12 @@ data class PendingActionEntity(
     val incidentId: Long,
     val action: String,
     val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "favorites")
+data class FavoriteEntity(
+    @PrimaryKey val targetKey: String,
+    val displayName: String,
+    val host: String,
+    val addedAt: Long = System.currentTimeMillis()
 )

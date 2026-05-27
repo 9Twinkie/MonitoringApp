@@ -10,66 +10,59 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@color/primary"
-            android:orientation="vertical"
-            android:padding="16dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/profile_title"
-                android:textColor="@color/white"
-                android:textSize="22sp"
-                android:textStyle="bold" />
-        </LinearLayout>
+        <include
+            android:id="@+id/header"
+            layout="@layout/view_screen_header" />
 
         <com.google.android.material.card.MaterialCardView
             style="@style/Widget.Monitoring.Card"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_margin="16dp">
+            android:layout_margin="@dimen/spacing_lg">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="16dp">
+                android:padding="@dimen/spacing_lg">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/username"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="12sp" />
+                    android:textAppearance="@style/TextAppearance.Monitoring.Label" />
 
                 <TextView
                     android:id="@+id/tvUsername"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:textColor="@color/text_primary"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
+                    android:textAppearance="@style/TextAppearance.Monitoring.Title" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
+                    android:layout_marginTop="@dimen/spacing_md"
                     android:text="@string/user_role"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="12sp" />
+                    android:textAppearance="@style/TextAppearance.Monitoring.Label" />
 
                 <TextView
                     android:id="@+id/tvRole"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="16dp"
-                    android:textColor="@color/text_primary"
-                    android:textSize="16sp" />
+                    android:layout_marginBottom="@dimen/spacing_lg"
+                    android:textAppearance="@style/TextAppearance.Monitoring.Body" />
+
+                <com.example.monitoringapp.ui.widget.MonitoringButton
+                    android:id="@+id/btnManageUsers"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="@dimen/spacing_lg"
+                    android:text="@string/users_manage"
+                    android:visibility="gone"
+                    app:buttonVariant="outlined" />
 
                 <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Widget.Monitoring.TextInput"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:hint="@string/server_url">
@@ -78,26 +71,40 @@
                         android:id="@+id/etServerUrl"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:inputType="textUri" />
+                        android:inputType="textUri"
+                        android:textAppearance="@style/TextAppearance.Monitoring.Body" />
                 </com.google.android.material.textfield.TextInputLayout>
 
-                <com.google.android.material.button.MaterialButton
+                <com.example.monitoringapp.ui.widget.MonitoringButton
                     android:id="@+id/btnSave"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
+                    android:layout_marginTop="@dimen/spacing_md"
                     android:text="@string/btn_save"
-                    app:backgroundTint="@color/primary" />
+                    app:buttonVariant="primary" />
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnLogout"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/switchNotifyFavorites"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
+                    android:layout_marginTop="@dimen/spacing_lg"
+                    android:text="@string/notify_favorites_only"
+                    android:textAppearance="@style/TextAppearance.Monitoring.Body" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/spacing_xs"
+                    android:text="@string/notify_favorites_only_hint"
+                    android:textAppearance="@style/TextAppearance.Monitoring.Caption" />
+
+                <com.example.monitoringapp.ui.widget.MonitoringButton
+                    android:id="@+id/btnLogout"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/spacing_sm"
                     android:text="@string/btn_logout"
-                    app:strokeColor="@color/accent_red"
-                    android:textColor="@color/accent_red" />
+                    app:buttonVariant="destructiveOutlined" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
     </LinearLayout>

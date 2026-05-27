@@ -15,9 +15,10 @@
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
             app:navigationIcon="?attr/homeAsUpIndicator"
-            app:navigationIconTint="@color/white"
+            app:navigationIconTint="@color/text_on_primary"
             app:title="@string/incident_detail"
-            app:titleTextColor="@color/white" />
+            app:titleTextAppearance="@style/TextAppearance.Monitoring.Headline.OnPrimary"
+            app:titleTextColor="@color/text_on_primary" />
     </com.google.android.material.appbar.AppBarLayout>
 
     <androidx.core.widget.NestedScrollView
@@ -29,33 +30,43 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="12dp">
+            android:padding="@dimen/spacing_md">
 
             <include
                 android:id="@+id/incidentContent"
                 layout="@layout/layout_featured_incident" />
 
-            <com.google.android.material.textfield.TextInputLayout
+            <LinearLayout
+                android:id="@+id/commentSection"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:hint="@string/comment_hint">
+                android:layout_marginTop="@dimen/spacing_sm"
+                android:orientation="vertical"
+                android:visibility="gone">
 
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/etComment"
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Widget.Monitoring.TextInput"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:inputType="textMultiLine"
-                    android:maxLines="3" />
-            </com.google.android.material.textfield.TextInputLayout>
+                    android:hint="@string/comment_hint">
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnCloseIncident"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:text="@string/btn_close"
-                app:backgroundTint="@color/accent_red" />
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etComment"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="textMultiLine"
+                        android:maxLines="3"
+                        android:textAppearance="@style/TextAppearance.Monitoring.Body" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.example.monitoringapp.ui.widget.MonitoringButton
+                    android:id="@+id/btnCloseIncident"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/spacing_md"
+                    android:text="@string/btn_close"
+                    app:buttonVariant="accent" />
+            </LinearLayout>
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 

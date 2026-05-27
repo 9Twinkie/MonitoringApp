@@ -28,6 +28,16 @@
         android:name="com.example.monitoringapp.ui.incidents.IncidentsFragment"
         android:label="@string/alerts_title"
         tools:layout="@layout/fragment_incidents">
+        <argument
+            android:name="filterHost"
+            android:defaultValue="@null"
+            app:argType="string"
+            app:nullable="true" />
+        <argument
+            android:name="filterName"
+            android:defaultValue="@null"
+            app:argType="string"
+            app:nullable="true" />
         <action
             android:id="@+id/action_incidents_to_detail"
             app:destination="@id/incidentDetailFragment" />
@@ -67,6 +77,16 @@
         android:id="@+id/settingsFragment"
         android:name="com.example.monitoringapp.ui.settings.SettingsFragment"
         android:label="@string/profile_title"
-        tools:layout="@layout/fragment_settings" />
+        tools:layout="@layout/fragment_settings">
+        <action
+            android:id="@+id/action_settings_to_users"
+            app:destination="@id/usersFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/usersFragment"
+        android:name="com.example.monitoringapp.ui.users.UsersFragment"
+        android:label="@string/users_title"
+        tools:layout="@layout/fragment_users" />
 
 </navigation>

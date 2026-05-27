@@ -4,15 +4,19 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.AdapterView
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.ArrayAdapter
+import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
+import androidx.core.widget.addTextChangedListener
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.findNavController
+import com.example.monitoringapp.R
 import com.example.monitoringapp.databinding.FragmentMetricsBinding
 import com.example.monitoringapp.domain.model.ChartTimeRange
 import com.example.monitoringapp.utils.ChartHelper
@@ -29,9 +33,10 @@ class MetricsFragment : Fragment() {
     private val binding get() = _binding!!
     private val viewModel: MetricsViewModel by viewModels()
 
-    private var spinnerFromCode = false
-    private var lastSpinnerLabels: List<String> = emptyList()
     private var rangeChipsFromCode = false
+    private var suppressTextCallback = false
+    private var suggestionsAdapter: ArrayAdapter<String>? = null
+    private var lastSuggestions: List<String> = emptyList()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -44,36 +49,36 @@ class MetricsFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        binding.header.tvHeaderTitle.setText(R.string.graphs_title)
         ChartHelper.setupLineChart(binding.lineChart, requireContext(), interactive = true)
+        setupMetricSearch()
         setupRangeChips()
-
-        binding.spinnerMetrics.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                if (spinnerFromCode) return
-                viewModel.selectSeries(position)
-            }
-            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
-        }
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.onScreenVisible(readNavArgs())
                 launch {
-                    viewModel.options.collect { options ->
-                        val labels = options.map { it.label }
-                        if (labels == lastSpinnerLabels) return@collect
-                        lastSpinnerLabels = labels
-                        spinnerFromCode = true
-                        binding.spinnerMetrics.adapter = ArrayAdapter(
-                            requireContext(),
-                            android.R.layout.simple_spinner_dropdown_item,
-                            labels
-                        )
-                        val index = viewModel.selectedIndex.value.coerceIn(0, labels.lastIndex.coerceAtLeast(0))
-                        if (index in labels.indices) {
-                            binding.spinnerMetrics.setSelection(index, false)
+                    viewModel.queryInput.collect { query ->
+                        if (binding.actvMetricSearch.text?.toString() != query) {
+                            suppressTextCallback = true
+                            binding.actvMetricSearch.setText(query, false)
+                            binding.actvMetricSearch.setSelection(query.length)
+                            suppressTextCallback = false
                         }
-                        spinnerFromCode = false
+                    }
+                }
+                launch {
+                    viewModel.suggestions.collect { suggestions ->
+                        if (suggestions == lastSuggestions) return@collect
+                        lastSuggestions = suggestions
+                        suggestionsAdapter = ArrayAdapter(
+                            requireContext(),
+                            android.R.layout.simple_dropdown_item_1line,
+                            suggestions
+                        )
+                        binding.actvMetricSearch.setAdapter(suggestionsAdapter)
+                        if (suggestions.isNotEmpty() && binding.actvMetricSearch.hasFocus()) {
+                            binding.actvMetricSearch.showDropDown()
+                        }
                     }
                 }
                 launch {
@@ -100,7 +105,7 @@ class MetricsFragment : Fragment() {
                                     requireContext(),
                                     primary = emptyList(),
                                     emptyText = state.message,
-                                    keepExistingWhenEmpty = true
+                                    keepExistingWhenEmpty = false
                                 )
                                 Snackbar.make(binding.root, state.message, Snackbar.LENGTH_LONG).show()
                             }
@@ -110,6 +115,45 @@ class MetricsFragment : Fragment() {
                 }
             }
         }
+    }
+
+    private fun setupMetricSearch() {
+        binding.tilMetricSearch.setEndIconOnClickListener {
+            runMetricQuery()
+        }
+        binding.actvMetricSearch.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) {
+                binding.scrollMetricsControls.post {
+                    binding.scrollMetricsControls.smoothScrollTo(0, 0)
+                }
+            }
+        }
+        binding.actvMetricSearch.addTextChangedListener { text ->
+            if (suppressTextCallback) return@addTextChangedListener
+            viewModel.onQueryInputChanged(text?.toString().orEmpty())
+        }
+        binding.actvMetricSearch.setOnItemClickListener { _, _, position, _ ->
+            val value = lastSuggestions.getOrNull(position) ?: return@setOnItemClickListener
+            viewModel.selectSuggestion(value)
+        }
+        binding.actvMetricSearch.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+                runMetricQuery()
+                true
+            } else {
+                false
+            }
+        }
+    }
+
+    private fun runMetricQuery() {
+        hideKeyboard()
+        viewModel.executeQuery(binding.actvMetricSearch.text?.toString())
+    }
+
+    private fun hideKeyboard() {
+        val imm = ContextCompat.getSystemService(requireContext(), InputMethodManager::class.java)
+        imm?.hideSoftInputFromWindow(binding.actvMetricSearch.windowToken, 0)
     }
 
     private fun setupRangeChips() {
@@ -132,7 +176,6 @@ class MetricsFragment : Fragment() {
             binding.chipGroupRange.addView(chip)
         }
         rangeChipsFromCode = false
-        syncRangeChipSelection(ChartTimeRange.HOUR)
     }
 
     private fun syncRangeChipSelection(range: ChartTimeRange) {

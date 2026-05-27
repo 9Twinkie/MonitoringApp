@@ -9,6 +9,7 @@ import androidx.core.app.NotificationCompat
 import com.example.monitoringapp.R
 import com.example.monitoringapp.data.remote.NotificationEventBus
 import com.example.monitoringapp.domain.repository.AuthRepository
+import com.example.monitoringapp.domain.repository.FavoriteRepository
 import com.example.monitoringapp.domain.repository.IncidentRepository
 import com.example.monitoringapp.domain.repository.SessionRepository
 import com.example.monitoringapp.ui.main.MainActivity
@@ -19,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
@@ -38,10 +40,12 @@ class WebSocketForegroundService : Service() {
     @Inject lateinit var eventBus: NotificationEventBus
     @Inject lateinit var okHttpClient: OkHttpClient
     @Inject lateinit var alertCoordinator: IncidentAlertCoordinator
+    @Inject lateinit var favoriteRepository: FavoriteRepository
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var webSocket: WebSocket? = null
     private var reconnectAttempt = 0
+    private var alertsSessionStarted = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -50,7 +54,10 @@ class WebSocketForegroundService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        alertCoordinator.resetSession()
+        if (!alertsSessionStarted) {
+            alertCoordinator.resetSession()
+            alertsSessionStarted = true
+        }
         startForeground(Constants.NOTIFICATION_ID_WS, buildForegroundNotification())
         connect()
         startIncidentPolling()
@@ -60,6 +67,7 @@ class WebSocketForegroundService : Service() {
     override fun onDestroy() {
         webSocket?.close(1000, "Service stopped")
         webSocket = null
+        alertsSessionStarted = false
         serviceScope.cancel()
         super.onDestroy()
     }
@@ -121,7 +129,8 @@ class WebSocketForegroundService : Service() {
 
     private suspend fun refreshAndCheckIncidents(wsRaw: String?) {
         val incidents = incidentRepository.refreshIncidents().getOrNull() ?: return
-        alertCoordinator.processAfterRefresh(incidents, wsRaw)
+        val favorites = favoriteRepository.favoritesFlow.first()
+        alertCoordinator.processAfterRefresh(incidents, wsRaw, favorites)
     }
 
     private fun scheduleReconnect() {

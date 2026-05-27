@@ -6,17 +6,22 @@ import androidx.core.view.isVisible
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import com.example.monitoringapp.R
 import com.example.monitoringapp.databinding.ItemAlertsSectionBinding
 import com.example.monitoringapp.databinding.ItemIncidentBinding
 import com.example.monitoringapp.databinding.LayoutFeaturedIncidentBinding
 import com.example.monitoringapp.domain.model.Incident
 import com.example.monitoringapp.domain.model.IncidentStatus
+import com.example.monitoringapp.utils.SeverityUiHelper
 
 class AlertsAdapter(
+    private val currentUsername: () -> String?,
     private val onFeaturedReady: (LayoutFeaturedIncidentBinding) -> Unit,
-    private val onConfirm: (Incident) -> Unit,
+    private val onAccept: (Incident) -> Unit,
+    private val onComplete: (Incident) -> Unit,
     private val onClose: (Incident) -> Unit,
-    private val onClick: (Incident) -> Unit
+    private val onSelect: (Incident) -> Unit,
+    private val onOpenDetail: (Incident) -> Unit
 ) : ListAdapter<AlertsListItem, RecyclerView.ViewHolder>(Diff) {
 
     companion object {
@@ -46,9 +51,12 @@ class AlertsAdapter(
             )
             else -> RowVH(
                 ItemIncidentBinding.inflate(inflater, parent, false),
-                onConfirm,
+                currentUsername,
+                onAccept,
+                onComplete,
                 onClose,
-                onClick
+                onSelect,
+                onOpenDetail
             )
         }
     }
@@ -82,8 +90,15 @@ class AlertsAdapter(
 
     fun featuredBinding(): LayoutFeaturedIncidentBinding? = featuredBinding
 
+    override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
+        super.onViewRecycled(holder)
+        if (holder is FeaturedVH && featuredBinding === holder.binding) {
+            featuredBinding = null
+        }
+    }
+
     inner class FeaturedVH(
-        private val binding: LayoutFeaturedIncidentBinding
+        val binding: LayoutFeaturedIncidentBinding
     ) : RecyclerView.ViewHolder(binding.root) {
 
         init {
@@ -98,7 +113,7 @@ class AlertsAdapter(
 
         fun bindTexts(ui: FeaturedIncidentUi) {
             val incident = ui.incident ?: return
-            IncidentUiHelper.bindTexts(binding, incident)
+            IncidentUiHelper.bindTexts(binding, incident, currentUsername())
         }
 
         fun bindChart(ui: FeaturedIncidentUi) {
@@ -117,22 +132,59 @@ class AlertsAdapter(
 
     class RowVH(
         private val binding: ItemIncidentBinding,
-        private val onConfirm: (Incident) -> Unit,
+        private val currentUsername: () -> String?,
+        private val onAccept: (Incident) -> Unit,
+        private val onComplete: (Incident) -> Unit,
         private val onClose: (Incident) -> Unit,
-        private val onClick: (Incident) -> Unit
+        private val onSelect: (Incident) -> Unit,
+        private val onOpenDetail: (Incident) -> Unit
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(item: Incident) {
             binding.tvTitle.text = item.title
-            binding.tvSeverity.text = item.severity.name
-            binding.tvStatus.text = item.status.name
+            SeverityUiHelper.applyBadge(binding.tvSeverity, item.severity)
+            binding.tvStatus.setText(IncidentUiHelper.statusLabelRes(item.status))
             binding.tvId.text = "#${item.id}"
-            val closed = item.status == IncidentStatus.CLOSED
-            binding.btnConfirm.isVisible = !closed
-            binding.btnClose.isVisible = !closed
-            binding.btnConfirm.setOnClickListener { onConfirm(item) }
+
+            if (item.status == IncidentStatus.CLOSED) {
+                binding.tvAssignedEngineer.isVisible = true
+                val parts = buildList {
+                    item.closedByUsername?.let {
+                        add(binding.root.context.getString(R.string.closed_by, it))
+                    }
+                    item.assignedEngineerUsername?.let {
+                        add(binding.root.context.getString(R.string.executed_by, it))
+                    }
+                    item.closeComment?.let {
+                        add(binding.root.context.getString(R.string.close_comment_label, it))
+                    }
+                }
+                binding.tvAssignedEngineer.text = parts.joinToString(" · ")
+            } else {
+                val username = item.assignedEngineerUsername?.takeIf { it.isNotBlank() }
+                val showAssigned = username != null || item.status.isInProgress()
+                binding.tvAssignedEngineer.isVisible = showAssigned
+                if (showAssigned) {
+                    binding.tvAssignedEngineer.text = if (username != null) {
+                        binding.root.context.getString(R.string.assigned_engineer, username)
+                    } else {
+                        binding.root.context.getString(R.string.assigned_engineer_unknown)
+                    }
+                }
+            }
+
+            val actions = IncidentActionHelper.actionsFor(item, currentUsername())
+            binding.btnAccept.isVisible = actions.showAccept
+            binding.btnConfirm.isVisible = actions.showComplete
+            binding.btnClose.isVisible = actions.showClose
+            binding.btnAccept.setOnClickListener { onAccept(item) }
+            binding.btnConfirm.setOnClickListener { onComplete(item) }
             binding.btnClose.setOnClickListener { onClose(item) }
-            binding.root.setOnClickListener { onClick(item) }
+            binding.root.setOnClickListener { onSelect(item) }
+            binding.root.setOnLongClickListener {
+                onOpenDetail(item)
+                true
+            }
         }
     }
 

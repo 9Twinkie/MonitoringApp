@@ -31,7 +31,11 @@ data class MonitoringObject(
     val host: String,
     val status: String,
     val metricSummary: String,
-    val isHealthy: Boolean
+    val isHealthy: Boolean,
+    val targetKey: String = name,
+    val worstSeverity: IncidentSeverity? = null,
+    val openIncidents: Int = 0,
+    val isFavorite: Boolean = false
 )
 
 data class DashboardSummary(

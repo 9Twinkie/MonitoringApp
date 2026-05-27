@@ -12,7 +12,9 @@ object JwtUtils {
     fun extractRole(accessToken: String): String? {
         val payload = decodePayload(accessToken) ?: return null
         return runCatching {
-            json.decodeFromString(JwtPayload.serializer(), payload).role
+            val parsed = json.decodeFromString(JwtPayload.serializer(), payload)
+            parsed.role?.takeIf { it.isNotBlank() }
+                ?: parsed.authorities?.firstOrNull { it.isNotBlank() }
         }.getOrNull()
     }
 

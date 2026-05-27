@@ -4,17 +4,22 @@ import android.content.Context
 import androidx.room.Room
 import androidx.work.WorkManager
 import com.example.monitoringapp.data.local.AppDatabase
+import com.example.monitoringapp.data.local.dao.FavoriteDao
 import com.example.monitoringapp.data.local.dao.IncidentDao
 import com.example.monitoringapp.data.local.dao.MetricCacheDao
 import com.example.monitoringapp.data.local.dao.PendingActionDao
 import com.example.monitoringapp.data.repository.AuthRepositoryImpl
+import com.example.monitoringapp.data.repository.FavoriteRepositoryImpl
 import com.example.monitoringapp.data.repository.IncidentRepositoryImpl
 import com.example.monitoringapp.data.repository.MetricsRepositoryImpl
 import com.example.monitoringapp.data.repository.SessionRepositoryImpl
 import com.example.monitoringapp.domain.repository.AuthRepository
+import com.example.monitoringapp.domain.repository.FavoriteRepository
 import com.example.monitoringapp.domain.repository.IncidentRepository
 import com.example.monitoringapp.domain.repository.MetricsRepository
 import com.example.monitoringapp.domain.repository.SessionRepository
+import com.example.monitoringapp.data.repository.UserRepositoryImpl
+import com.example.monitoringapp.domain.repository.UserRepository
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -38,6 +43,12 @@ abstract class RepositoryModule {
 
     @Binds @Singleton
     abstract fun bindMetrics(impl: MetricsRepositoryImpl): MetricsRepository
+
+    @Binds @Singleton
+    abstract fun bindFavorites(impl: FavoriteRepositoryImpl): FavoriteRepository
+
+    @Binds @Singleton
+    abstract fun bindUsers(impl: UserRepositoryImpl): UserRepository
 }
 
 @Module
@@ -53,11 +64,14 @@ object AppModule {
 
     @Provides @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
-        Room.databaseBuilder(context, AppDatabase::class.java, "monitoring.db").build()
+        Room.databaseBuilder(context, AppDatabase::class.java, "monitoring.db")
+            .fallbackToDestructiveMigration()
+            .build()
 
     @Provides fun provideIncidentDao(db: AppDatabase): IncidentDao = db.incidentDao()
     @Provides fun provideMetricCacheDao(db: AppDatabase): MetricCacheDao = db.metricCacheDao()
     @Provides fun providePendingActionDao(db: AppDatabase): PendingActionDao = db.pendingActionDao()
+    @Provides fun provideFavoriteDao(db: AppDatabase): FavoriteDao = db.favoriteDao()
 
     @Provides @Singleton
     fun provideWorkManager(@ApplicationContext context: Context): WorkManager =

@@ -23,23 +23,107 @@ data class RefreshTokenRequest(
 )
 
 @Serializable
+data class AuthMeDto(
+    val id: Long? = null,
+    val username: String? = null,
+    val role: String? = null,
+    val roles: List<String>? = null,
+    val authorities: List<String>? = null,
+    val phone: String? = null,
+    val notificationPrefs: String? = null
+)
+
+@Serializable
+data class AdminUserDto(
+    val id: Long? = null,
+    @SerialName("userId") val userId: Long? = null,
+    val username: String? = null,
+    @SerialName("userName") val userName: String? = null,
+    val login: String? = null,
+    val name: String? = null,
+    val email: String? = null,
+    val role: String? = null,
+    val roles: List<String>? = null,
+    val authorities: List<String>? = null,
+    val phone: String? = null,
+    @SerialName("phoneNumber") val phoneNumber: String? = null,
+    val notificationPrefs: String? = null,
+    @SerialName("notification_prefs") val notificationPrefsSnake: String? = null,
+    @SerialName("notificationPreferences") val notificationPreferences: String? = null
+)
+
+@Serializable
+data class CreateUserRequest(
+    val username: String,
+    val password: String,
+    val role: String,
+    val phone: String? = null,
+    val notificationPrefs: String = "push"
+)
+
+@Serializable
 data class IncidentDto(
     val id: Long,
     val title: String? = null,
     val host: String? = null,
     val status: String? = null,
+    @SerialName("incidentStatus") val incidentStatus: String? = null,
+    val state: String? = null,
     val severity: String? = null,
+    @SerialName("prometheusSeverity") val prometheusSeverity: String? = null,
+    @SerialName("prometheus_severity") val prometheusSeveritySnake: String? = null,
     @SerialName("metricName") val metricName: String? = null,
+    val expr: String? = null,
+    @SerialName("metricExpr") val metricExpr: String? = null,
+    val promql: String? = null,
     @SerialName("metricValue") val metricValue: String? = null,
+    val value: String? = null,
+    @SerialName("currentValue") val currentValue: String? = null,
+    @SerialName("alertName") val alertName: String? = null,
+    @SerialName("alert_name") val alertNameSnake: String? = null,
+    val description: String? = null,
+    val summary: String? = null,
+    @SerialName("prometheusDescription") val prometheusDescription: String? = null,
+    @SerialName("prometheus_description") val prometheusDescriptionSnake: String? = null,
+    @SerialName("prometheusSummary") val prometheusSummary: String? = null,
+    @SerialName("prometheus_summary") val prometheusSummarySnake: String? = null,
+    val name: String? = null,
     @SerialName("createdAt") val createdAt: String? = null,
     val timestamp: String? = null,
+    @SerialName("firedAt") val firedAt: String? = null,
+    @SerialName("startsAt") val startsAt: String? = null,
+    @SerialName("startAt") val startAt: String? = null,
+    @SerialName("activeAt") val activeAt: String? = null,
     val rule: String? = null,
     val threshold: Double? = null,
     val operator: String? = null,
+    @SerialName("assignedEngineerUsername") val assignedEngineerUsername: String? = null,
+    @Serializable(with = FlexibleAssigneeSerializer::class)
+    @SerialName("assignedEngineer")
+    val assignedEngineer: String? = null,
+    val assigneeUsername: String? = null,
+    @SerialName("assignedTo") val assignedTo: String? = null,
+    val engineerUsername: String? = null,
+    @SerialName("canAccept") val canAccept: Boolean? = null,
+    @SerialName("canTake") val canTake: Boolean? = null,
+    @SerialName("canConfirm") val canConfirm: Boolean? = null,
+    @SerialName("canComplete") val canComplete: Boolean? = null,
+    @SerialName("canClose") val canClose: Boolean? = null,
+    @SerialName("closeComment") val closeComment: String? = null,
+    val comment: String? = null,
+    @SerialName("resolutionComment") val resolutionComment: String? = null,
+    @SerialName("closedByUsername") val closedByUsername: String? = null,
+    val closedBy: String? = null,
     @SerialName("chartData") val chartData: List<MetricPointDto>? = null,
     val history: List<MetricPointDto>? = null,
     @SerialName("metricHistory") val metricHistory: List<MetricPointDto>? = null,
     val points: List<MetricPointDto>? = null
+)
+
+@Serializable
+data class CloseIncidentRequest(
+    val comment: String? = null,
+    @SerialName("resolutionComment") val resolutionComment: String? = null
 )
 
 @Serializable

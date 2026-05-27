@@ -5,7 +5,7 @@
     style="@style/Widget.Monitoring.Card"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginBottom="12dp"
+    android:layout_marginBottom="@dimen/spacing_md"
     app:cardPreventCornerOverlap="true">
 
     <LinearLayout
@@ -13,40 +13,37 @@
         android:layout_height="wrap_content"
         android:animateLayoutChanges="false"
         android:orientation="vertical"
-        android:padding="16dp">
+        android:padding="@dimen/spacing_md">
 
         <TextView
             android:id="@+id/tvSeverity"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:background="@drawable/bg_severity_critical"
-            android:paddingHorizontal="12dp"
-            android:paddingVertical="4dp"
+            android:paddingHorizontal="@dimen/spacing_md"
+            android:paddingVertical="@dimen/spacing_xs"
             android:text="@string/severity_critical"
+            android:textAppearance="@style/TextAppearance.Monitoring.Label"
             android:textColor="@color/severity_critical_text"
-            android:textSize="12sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/tvTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:textColor="@color/text_primary"
-            android:textSize="20sp"
-            android:textStyle="bold" />
+            android:layout_marginTop="@dimen/spacing_md"
+            android:textAppearance="@style/TextAppearance.Monitoring.Title" />
 
         <TextView
             android:id="@+id/tvHost"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textColor="@color/text_secondary"
-            android:textSize="13sp" />
+            android:textAppearance="@style/TextAppearance.Monitoring.Caption" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="@dimen/spacing_md"
             android:orientation="horizontal">
 
             <LinearLayout
@@ -59,16 +56,16 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/metric_label"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="11sp" />
+                    android:textAppearance="@style/TextAppearance.Monitoring.Caption" />
 
                 <TextView
                     android:id="@+id/tvMetric"
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:textColor="@color/accent_red"
-                    android:textSize="22sp"
-                    android:textStyle="bold" />
+                    android:ellipsize="end"
+                    android:maxLines="3"
+                    android:textAppearance="@style/TextAppearance.Monitoring.Body"
+                    android:textColor="@color/text_primary" />
             </LinearLayout>
 
             <LinearLayout
@@ -81,110 +78,136 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/time_label"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="11sp" />
+                    android:textAppearance="@style/TextAppearance.Monitoring.Caption" />
 
                 <TextView
                     android:id="@+id/tvTime"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:textColor="@color/text_primary"
-                    android:textSize="22sp"
-                    android:textStyle="bold" />
+                    android:textAppearance="@style/TextAppearance.Monitoring.Stat"
+                    android:textColor="@color/text_primary" />
             </LinearLayout>
         </LinearLayout>
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
+            android:layout_marginTop="@dimen/spacing_md"
             android:text="@string/dynamics_1h"
-            android:textColor="@color/text_primary"
-            android:textSize="14sp"
-            android:textStyle="bold" />
+            android:textAppearance="@style/TextAppearance.Monitoring.SectionTitle" />
 
-        <com.github.mikephil.charting.charts.LineChart
-            android:id="@+id/chartMini"
+        <FrameLayout
+            android:id="@+id/chartMiniContainer"
             android:layout_width="match_parent"
-            android:layout_height="140dp"
-            android:layout_marginTop="8dp"
-            android:minHeight="140dp" />
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/spacing_sm"
+            android:background="@color/chart_background"
+            android:clickable="true"
+            android:contentDescription="@string/chart_open_full"
+            android:focusable="true"
+            android:foreground="?attr/selectableItemBackground">
+
+            <com.github.mikephil.charting.charts.LineChart
+                android:id="@+id/chartMini"
+                android:layout_width="match_parent"
+                android:layout_height="140dp"
+                android:minHeight="140dp" />
+        </FrameLayout>
 
         <TextView
             android:id="@+id/tvRule"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:textColor="@color/text_secondary"
-            android:textSize="11sp" />
+            android:layout_marginTop="@dimen/spacing_xs"
+            android:textAppearance="@style/TextAppearance.Monitoring.Caption" />
 
         <com.google.android.material.card.MaterialCardView
             style="@style/Widget.Monitoring.Card"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp">
+            android:layout_marginTop="@dimen/spacing_md">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="12dp">
+                android:padding="@dimen/spacing_md">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/status_label"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="12sp" />
+                    android:textAppearance="@style/TextAppearance.Monitoring.Label" />
 
                 <TextView
                     android:id="@+id/tvStatus"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:textColor="@color/accent_red"
-                    android:textSize="15sp"
-                    android:textStyle="bold" />
+                    android:textAppearance="@style/TextAppearance.Monitoring.Stat"
+                    android:textColor="@color/primary" />
+
+                <TextView
+                    android:id="@+id/tvAssignedEngineer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/spacing_xs"
+                    android:textAppearance="@style/TextAppearance.Monitoring.Body.Secondary"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/tvClosedInfo"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/spacing_xs"
+                    android:textAppearance="@style/TextAppearance.Monitoring.Caption"
+                    android:visibility="gone" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
         <LinearLayout
+            android:id="@+id/actionsRow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="@dimen/spacing_md"
             android:orientation="horizontal">
 
-            <com.google.android.material.button.MaterialButton
+            <com.example.monitoringapp.ui.widget.MonitoringButton
                 android:id="@+id/btnAccept"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginEnd="6dp"
+                android:layout_marginEnd="@dimen/spacing_sm"
                 android:layout_weight="1"
                 android:text="@string/btn_accept"
-                android:textSize="11sp"
-                app:backgroundTint="@color/accent_red" />
+                android:visibility="gone"
+                app:buttonVariant="primary" />
 
-            <com.google.android.material.button.MaterialButton
+            <com.example.monitoringapp.ui.widget.MonitoringButton
                 android:id="@+id/btnConfirm"
-                style="@style/Widget.Material3.Button.OutlinedButton"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginEnd="6dp"
+                android:layout_marginEnd="@dimen/spacing_sm"
                 android:layout_weight="1"
-                android:text="@string/btn_confirm"
-                android:textSize="11sp"
-                app:strokeColor="@color/accent_orange"
-                android:textColor="@color/accent_orange" />
+                android:text="@string/btn_complete"
+                android:visibility="gone"
+                app:buttonVariant="secondary" />
 
-            <com.google.android.material.button.MaterialButton
+            <com.example.monitoringapp.ui.widget.MonitoringButton
+                android:id="@+id/btnClose"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="@dimen/spacing_sm"
+                android:layout_weight="1"
+                android:text="@string/btn_close"
+                android:visibility="gone"
+                app:buttonVariant="outlined" />
+
+            <com.example.monitoringapp.ui.widget.MonitoringButton
                 android:id="@+id/btnGraphs"
-                style="@style/Widget.Material3.Button.OutlinedButton"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="@string/btn_graphs"
-                android:textSize="11sp"
-                app:strokeColor="@color/accent_blue"
-                android:textColor="@color/accent_blue" />
+                app:buttonVariant="outlined" />
         </LinearLayout>
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>
