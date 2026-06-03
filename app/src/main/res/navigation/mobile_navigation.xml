@@ -74,6 +74,75 @@
     </fragment>
 
     <fragment
+        android:id="@+id/terminalHostsFragment"
+        android:name="com.example.monitoringapp.ui.terminal.TerminalHostsFragment"
+        android:label="@string/terminal_title"
+        tools:layout="@layout/fragment_terminal_hosts">
+        <action
+            android:id="@+id/action_terminal_hosts_to_connect"
+            app:destination="@id/terminalConnectFragment" />
+        <action
+            android:id="@+id/action_terminal_hosts_to_session"
+            app:destination="@id/terminalSessionFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/terminalConnectFragment"
+        android:name="com.example.monitoringapp.ui.terminal.TerminalConnectFragment"
+        android:label="@string/terminal_new_connection"
+        tools:layout="@layout/fragment_terminal_connect">
+        <action
+            android:id="@+id/action_terminal_connect_to_session"
+            app:destination="@id/terminalSessionFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/terminalSessionFragment"
+        android:name="com.example.monitoringapp.ui.terminal.TerminalSessionFragment"
+        android:label="@string/terminal_title"
+        tools:layout="@layout/fragment_terminal_session">
+        <argument
+            android:name="connectMode"
+            app:argType="string" />
+        <argument
+            android:name="hostname"
+            android:defaultValue=""
+            app:argType="string" />
+        <argument
+            android:name="port"
+            android:defaultValue="22"
+            app:argType="integer" />
+        <argument
+            android:name="username"
+            android:defaultValue=""
+            app:argType="string" />
+        <argument
+            android:name="password"
+            android:defaultValue=""
+            app:argType="string" />
+        <argument
+            android:name="authMethod"
+            android:defaultValue="password"
+            app:argType="string" />
+        <argument
+            android:name="privateKey"
+            android:defaultValue=""
+            app:argType="string" />
+        <argument
+            android:name="passphrase"
+            android:defaultValue=""
+            app:argType="string" />
+        <argument
+            android:name="hostId"
+            android:defaultValue="-1L"
+            app:argType="long" />
+        <argument
+            android:name="sessionTitle"
+            android:defaultValue=""
+            app:argType="string" />
+    </fragment>
+
+    <fragment
         android:id="@+id/settingsFragment"
         android:name="com.example.monitoringapp.ui.settings.SettingsFragment"
         android:label="@string/profile_title"

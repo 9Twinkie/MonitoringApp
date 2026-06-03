@@ -23,9 +23,30 @@ data class Incident(
     val canConfirm: Boolean = false,
     val canClose: Boolean = false,
     val closeComment: String? = null,
-    val closedByUsername: String? = null
+    val closedByUsername: String? = null,
+    /** Ключ задачи в Yandex Tracker, напр. MONITORING-19. */
+    val trackerIssueKey: String? = null,
+    /**
+     * Состояние алерта в Prometheus: true — горит, false — погас (инцидент может быть в работе),
+     * null — не Prometheus-инцидент.
+     */
+    val prometheusAlertActive: Boolean? = null,
+    /** Адрес объекта с бэкенда (monitoring.site.address). */
+    val siteAddress: String? = null
 ) {
     fun hasAssignee(): Boolean = !assignedEngineerUsername.isNullOrBlank()
+
+    fun isPrometheusIncident(): Boolean = prometheusAlertActive != null
+
+    /** Алерт погас на Prometheus, инцидент ещё в работе у инженера. */
+    fun isPrometheusAlertClearedInWork(): Boolean =
+        prometheusAlertActive == false && matchesInProgressTab()
+
+    /** Ключ Tracker только после взятия в работу. */
+    fun visibleTrackerIssueKey(): String? {
+        if (status == IncidentStatus.NEW || status == IncidentStatus.UNKNOWN) return null
+        return trackerIssueKey?.trim()?.takeIf { it.isNotBlank() }
+    }
 
     /** Вкладка «Активные»: новые, без исполнителя. */
     fun matchesActiveTab(): Boolean {
@@ -70,8 +91,8 @@ enum class IncidentStatus {
                 "ACCEPTED", "ACKNOWLEDGED", "ACKED" -> ACCEPTED
                 "IN_PROGRESS", "IN_WORK", "INWORK", "WORKING", "TAKEN", "ASSIGNED",
                 "PROCESSING", "AT_WORK", "IN_PROGRESSING" -> IN_PROGRESS
-                "CONFIRMED", "COMPLETED", "COMPLETE", "DONE_WORK", "RESOLVED_PENDING" -> CONFIRMED
-                "ACK" -> CONFIRMED
+                "CONFIRMED", "RESOLVED_PENDING", "ACK" -> CONFIRMED
+                "COMPLETED", "COMPLETE", "DONE_WORK" -> IN_PROGRESS
                 "CLOSED", "RESOLVED", "DONE" -> CLOSED
                 else -> UNKNOWN
             }

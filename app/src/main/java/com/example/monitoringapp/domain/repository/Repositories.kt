@@ -13,8 +13,10 @@ import kotlinx.coroutines.flow.Flow
 interface AuthRepository {
     suspend fun login(username: String, password: String): Result<Unit>
     suspend fun refreshProfile(): Result<Unit>
+    suspend fun requireAdmin(): Result<Unit>
     fun logout()
     fun isLoggedIn(): Boolean
+    fun isAccessTokenExpired(): Boolean
     fun getUsername(): String?
     fun getUserId(): Long?
     fun getUserRole(): UserRole
@@ -44,10 +46,10 @@ interface IncidentRepository {
     suspend fun getIncident(id: Long): Incident?
     suspend fun loadChartPoints(incident: Incident): Result<List<MetricPoint>>
     suspend fun loadIncidentChart(incident: Incident, rangeMinutes: Int = 60): Result<IncidentChartData>
-    suspend fun confirmIncident(id: Long): Result<Unit>
     suspend fun closeIncident(id: Long, comment: String? = null): Result<Unit>
     suspend fun acceptIncident(id: Long): Result<Unit>
     suspend fun syncPendingActions(): Result<Unit>
+    suspend fun clearLocalCache()
 }
 
 interface MetricsRepository {

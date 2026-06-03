@@ -33,11 +33,11 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginHorizontal="@dimen/spacing_md"
-        android:layout_marginTop="@dimen/spacing_md"
-        app:startIconDrawable="@android:drawable/ic_menu_search">
+        android:layout_marginTop="@dimen/spacing_md">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/etSearch"
+            style="@style/Widget.Monitoring.TextInputEditText.Search"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:hint="@string/search_incidents_hint"

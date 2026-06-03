@@ -25,3 +25,10 @@ dependencyResolutionManagement {
 
 rootProject.name = "MonitoringApp"
 include(":app")
+include(":terminal-emulator")
+include(":terminal-view")
+
+project(":terminal-emulator").projectDir =
+    file("third_party/termux-app/terminal-emulator")
+project(":terminal-view").projectDir =
+    file("third_party/termux-app/terminal-view")

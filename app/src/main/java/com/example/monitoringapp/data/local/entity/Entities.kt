@@ -23,6 +23,9 @@ data class IncidentEntity(
     val canClose: Boolean = false,
     val closeComment: String? = null,
     val closedByUsername: String? = null,
+    val trackerIssueKey: String? = null,
+    val prometheusAlertActive: Boolean? = null,
+    val siteAddress: String? = null,
     val chartJson: String?,
     val cachedAt: Long
 )
@@ -39,6 +42,7 @@ data class PendingActionEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val incidentId: Long,
     val action: String,
+    val comment: String? = null,
     val createdAt: Long = System.currentTimeMillis()
 )
 

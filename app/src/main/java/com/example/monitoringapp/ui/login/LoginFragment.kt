@@ -15,8 +15,8 @@ import com.example.monitoringapp.R
 import com.example.monitoringapp.databinding.FragmentLoginBinding
 import com.example.monitoringapp.domain.repository.AuthRepository
 import com.example.monitoringapp.ui.main.MainActivity
-import com.example.monitoringapp.utils.UiState
 import com.google.android.material.snackbar.Snackbar
+import com.example.monitoringapp.utils.UiState
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -25,6 +25,8 @@ import javax.inject.Inject
 class LoginFragment : Fragment() {
 
     @Inject lateinit var authRepository: AuthRepository
+
+    private var lastShownServerUrl: String? = null
 
     private var _binding: FragmentLoginBinding? = null
     private val binding get() = _binding!!
@@ -44,26 +46,38 @@ class LoginFragment : Fragment() {
         binding.btnLogin.setOnClickListener {
             viewModel.login(
                 binding.etUsername.text?.toString().orEmpty(),
-                binding.etPassword.text?.toString().orEmpty()
+                binding.etPassword.text?.toString().orEmpty(),
+                binding.etServerUrl.text?.toString().orEmpty()
             )
         }
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.state.collect { state ->
-                    binding.progressBar.isVisible = state is UiState.Loading
-                    binding.btnLogin.isEnabled = state !is UiState.Loading
-                    when (state) {
-                        is UiState.Success -> {
-                            findNavController().navigate(R.id.action_login_to_main)
-                            val activity = requireActivity() as MainActivity
-                            if (authRepository.receivesPushAlerts()) {
-                                activity.requestNotificationPermissionIfNeeded()
-                            }
+                launch {
+                    viewModel.serverUrl.collect { url ->
+                        val field = binding.etServerUrl.text?.toString().orEmpty()
+                        if (field.isBlank() || field == lastShownServerUrl) {
+                            binding.etServerUrl.setText(url)
+                            lastShownServerUrl = url
                         }
-                        is UiState.Error -> Snackbar.make(
-                            binding.root, state.message, Snackbar.LENGTH_LONG
-                        ).show()
-                        else -> Unit
+                    }
+                }
+                launch {
+                    viewModel.state.collect { state ->
+                        binding.progressBar.isVisible = state is UiState.Loading
+                        binding.btnLogin.isEnabled = state !is UiState.Loading
+                        when (state) {
+                            is UiState.Success -> {
+                                findNavController().navigate(R.id.action_login_to_main)
+                                val activity = requireActivity() as MainActivity
+                                if (authRepository.receivesPushAlerts()) {
+                                    activity.requestNotificationPermissionIfNeeded()
+                                }
+                            }
+                            is UiState.Error -> Snackbar.make(
+                                binding.root, state.message, Snackbar.LENGTH_LONG
+                            ).show()
+                            else -> Unit
+                        }
                     }
                 }
             }

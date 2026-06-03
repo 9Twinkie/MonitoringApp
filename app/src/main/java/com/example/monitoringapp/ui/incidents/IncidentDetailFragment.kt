@@ -42,7 +42,7 @@ class IncidentDetailFragment : Fragment() {
 
         val content = binding.incidentContent
         content.btnAccept.setOnClickListener { viewModel.accept() }
-        content.btnConfirm.setOnClickListener { viewModel.complete() }
+        content.btnConfirm.isVisible = false
         content.btnClose.setOnClickListener { promptCloseFromFeatured() }
         content.btnGraphs.setOnClickListener { openGraphsForCurrentIncident() }
         content.chartMiniContainer.setOnClickListener { openGraphsForCurrentIncident() }

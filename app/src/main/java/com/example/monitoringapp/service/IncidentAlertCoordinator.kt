@@ -7,6 +7,7 @@ import com.example.monitoringapp.domain.model.IncidentSeverity
 import com.example.monitoringapp.domain.model.IncidentStatus
 import com.example.monitoringapp.domain.repository.AuthRepository
 import com.example.monitoringapp.domain.repository.FavoriteRepository
+import com.example.monitoringapp.utils.IncidentDisplayHelper
 import com.example.monitoringapp.utils.NotificationHelper
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
@@ -22,10 +23,12 @@ class IncidentAlertCoordinator @Inject constructor(
 
     private val knownActiveIds = mutableSetOf<Long>()
     private var baselineEstablished = false
+    private var myInProgressSnapshots: Map<Long, Incident> = emptyMap()
 
     fun resetSession() {
         knownActiveIds.clear()
         baselineEstablished = false
+        myInProgressSnapshots = emptyMap()
     }
 
     fun processAfterRefresh(
@@ -35,20 +38,35 @@ class IncidentAlertCoordinator @Inject constructor(
     ) {
         if (!authRepository.receivesPushAlerts()) return
 
+        val username = authRepository.getUsername()
         val active = incidents.filter { it.status != IncidentStatus.CLOSED }
         val activeIds = active.map { it.id }.toSet()
         val closedIds = incidents.filter { it.status == IncidentStatus.CLOSED }.map { it.id }.toSet()
         knownActiveIds.removeAll(closedIds)
 
         wsRaw?.let { raw ->
-            handleWsEvent(raw, active, favorites)
+            handleWsEvent(raw, incidents, active, favorites, username)
         }
 
         if (!baselineEstablished) {
             knownActiveIds.addAll(activeIds)
+            myInProgressSnapshots = snapshotMyInProgress(incidents, username)
             baselineEstablished = true
             return
         }
+
+        val autoResolved = IncidentAutoResolveNotifier.detectAutoResolved(
+            myInProgressSnapshots,
+            incidents,
+            username
+        )
+        autoResolved.forEach { incident ->
+            notifyAutoResolved(incident, wsMessage = null)
+            myInProgressSnapshots = myInProgressSnapshots - incident.id
+            knownActiveIds.remove(incident.id)
+        }
+
+        myInProgressSnapshots = snapshotMyInProgress(incidents, username)
 
         if (activeIds.isEmpty()) return
 
@@ -60,12 +78,37 @@ class IncidentAlertCoordinator @Inject constructor(
         }
     }
 
+    private fun snapshotMyInProgress(
+        incidents: List<Incident>,
+        username: String?
+    ): Map<Long, Incident> =
+        incidents
+            .filter { IncidentAutoResolveNotifier.isInWorkForEngineer(it, username) }
+            .associateBy { it.id }
+
     private fun handleWsEvent(
         raw: String,
+        incidents: List<Incident>,
         active: List<Incident>,
-        favorites: List<FavoriteTarget>
+        favorites: List<FavoriteTarget>,
+        username: String?
     ) {
         val dto = parseWs(raw) ?: return
+        val type = dto.type?.trim()?.lowercase()
+
+        if (IncidentAutoResolveNotifier.isResolvedWsType(type)) {
+            val incidentId = dto.incidentId ?: return
+            if (incidentId !in myInProgressSnapshots) return
+            val incident = incidents.find { it.id == incidentId }
+                ?: myInProgressSnapshots[incidentId]
+                ?: return
+            if (notifyAutoResolved(incident, wsText(dto))) {
+                myInProgressSnapshots = myInProgressSnapshots - incidentId
+                knownActiveIds.remove(incidentId)
+            }
+            return
+        }
+
         if (!isIncidentEvent(dto)) return
 
         val incidentId = dto.incidentId ?: return
@@ -76,6 +119,14 @@ class IncidentAlertCoordinator @Inject constructor(
             knownActiveIds.add(incident.id)
             baselineEstablished = true
         }
+    }
+
+    private fun notifyAutoResolved(incident: Incident, wsMessage: String?): Boolean {
+        if (!notificationHelper.hasPostPermission()) return false
+        val metricLabel = wsMessage?.takeIf { it.isNotBlank() }
+            ?: metricLabel(incident)
+        notificationHelper.showIncidentResolvedAlert(incident.id, metricLabel)
+        return true
     }
 
     private fun notifyIfAllowed(
@@ -97,6 +148,11 @@ class IncidentAlertCoordinator @Inject constructor(
         return true
     }
 
+    private fun metricLabel(incident: Incident): String =
+        IncidentDisplayHelper.promql(incident)
+            .takeIf { it != "—" }
+            ?: incident.title
+
     private fun buildBody(incident: Incident, wsMessage: String?): String {
         wsMessage?.takeIf { it.isNotBlank() }?.let { return it }
         val severity = when (incident.severity) {
@@ -105,11 +161,7 @@ class IncidentAlertCoordinator @Inject constructor(
             IncidentSeverity.INFO -> "Низкий"
             IncidentSeverity.UNKNOWN -> "Низкий"
         }
-        val metric = com.example.monitoringapp.utils.IncidentDisplayHelper
-            .metricExpr(incident)
-            .takeIf { it != "—" }
-            ?: incident.title
-        return "$severity: $metric"
+        return "$severity: ${metricLabel(incident)}"
     }
 
     private fun parseWs(raw: String): WsNotificationDto? {
@@ -123,6 +175,7 @@ class IncidentAlertCoordinator @Inject constructor(
     private fun isIncidentEvent(dto: WsNotificationDto): Boolean {
         val type = dto.type?.trim()?.lowercase()
         if (type != null && type in IGNORED_WS_TYPES) return false
+        if (IncidentAutoResolveNotifier.isResolvedWsType(type)) return false
         if (dto.incidentId != null) return true
         return type != null && type in INCIDENT_WS_TYPES
     }

@@ -12,13 +12,15 @@ import com.example.monitoringapp.databinding.ItemIncidentBinding
 import com.example.monitoringapp.databinding.LayoutFeaturedIncidentBinding
 import com.example.monitoringapp.domain.model.Incident
 import com.example.monitoringapp.domain.model.IncidentStatus
+import com.example.monitoringapp.utils.IncidentCloseUiHelper
+import com.example.monitoringapp.utils.PrometheusAlertUiHelper
 import com.example.monitoringapp.utils.SeverityUiHelper
+import com.example.monitoringapp.utils.SiteAddressUiHelper
 
 class AlertsAdapter(
     private val currentUsername: () -> String?,
     private val onFeaturedReady: (LayoutFeaturedIncidentBinding) -> Unit,
     private val onAccept: (Incident) -> Unit,
-    private val onComplete: (Incident) -> Unit,
     private val onClose: (Incident) -> Unit,
     private val onSelect: (Incident) -> Unit,
     private val onOpenDetail: (Incident) -> Unit,
@@ -54,7 +56,6 @@ class AlertsAdapter(
                 ItemIncidentBinding.inflate(inflater, parent, false),
                 currentUsername,
                 onAccept,
-                onComplete,
                 onClose,
                 onSelect,
                 onOpenDetail,
@@ -109,6 +110,8 @@ class AlertsAdapter(
         }
 
         fun bindFull(ui: FeaturedIncidentUi) {
+            featuredBinding = binding
+            onFeaturedReady(binding)
             bindTexts(ui)
             bindChart(ui)
         }
@@ -136,7 +139,6 @@ class AlertsAdapter(
         private val binding: ItemIncidentBinding,
         private val currentUsername: () -> String?,
         private val onAccept: (Incident) -> Unit,
-        private val onComplete: (Incident) -> Unit,
         private val onClose: (Incident) -> Unit,
         private val onSelect: (Incident) -> Unit,
         private val onOpenDetail: (Incident) -> Unit,
@@ -145,12 +147,17 @@ class AlertsAdapter(
 
         fun bind(item: Incident) {
             binding.tvTitle.text = item.title
+            SiteAddressUiHelper.bindCopyButton(
+                binding.btnCopySiteAddress,
+                item.siteAddress,
+                binding.root
+            )
             SeverityUiHelper.applyBadge(binding.tvSeverity, item.severity)
             binding.tvStatus.setText(IncidentUiHelper.statusLabelRes(item.status))
+            PrometheusAlertUiHelper.bindListBadge(binding.tvPrometheusAlert, item)
             binding.tvId.text = "#${item.id}"
 
             if (item.status == IncidentStatus.CLOSED) {
-                binding.tvAssignedEngineer.isVisible = true
                 val parts = buildList {
                     item.closedByUsername?.let {
                         add(binding.root.context.getString(R.string.closed_by, it))
@@ -158,12 +165,12 @@ class AlertsAdapter(
                     item.assignedEngineerUsername?.let {
                         add(binding.root.context.getString(R.string.executed_by, it))
                     }
-                    item.closeComment?.let {
-                        add(binding.root.context.getString(R.string.close_comment_label, it))
-                    }
                 }
                 binding.tvAssignedEngineer.text = parts.joinToString(" · ")
+                binding.tvAssignedEngineer.isVisible = parts.isNotEmpty()
+                IncidentCloseUiHelper.bindListRow(binding, item)
             } else {
+                binding.tvCloseComment.isVisible = false
                 val username = item.assignedEngineerUsername?.takeIf { it.isNotBlank() }
                 val showAssigned = username != null || item.status.isInProgress()
                 binding.tvAssignedEngineer.isVisible = showAssigned
@@ -178,10 +185,9 @@ class AlertsAdapter(
 
             val actions = IncidentActionHelper.actionsFor(item, currentUsername())
             binding.btnAccept.isVisible = actions.showAccept
-            binding.btnConfirm.isVisible = actions.showComplete
+            binding.btnConfirm.isVisible = false
             binding.btnClose.isVisible = actions.showClose
             binding.btnAccept.setOnClickListener { onAccept(item) }
-            binding.btnConfirm.setOnClickListener { onComplete(item) }
             binding.btnClose.setOnClickListener { onClose(item) }
             val canChart = IncidentGraphNavigator.chartQuery(item) != null
             binding.btnGraphs.isVisible = true

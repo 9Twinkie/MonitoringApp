@@ -1,5 +1,7 @@
 package com.example.monitoringapp.ui.incidents
 
+import android.content.Intent
+import android.net.Uri
 import androidx.core.view.isVisible
 import com.example.monitoringapp.R
 import com.example.monitoringapp.databinding.LayoutFeaturedIncidentBinding
@@ -7,7 +9,11 @@ import com.example.monitoringapp.domain.model.Incident
 import com.example.monitoringapp.domain.model.IncidentStatus
 import com.example.monitoringapp.domain.model.MetricPoint
 import com.example.monitoringapp.utils.ChartHelper
+import com.example.monitoringapp.utils.IncidentCloseUiHelper
 import com.example.monitoringapp.utils.IncidentDisplayHelper
+import com.example.monitoringapp.utils.PrometheusAlertUiHelper
+import com.example.monitoringapp.utils.SiteAddressUiHelper
+import com.example.monitoringapp.utils.TrackerLinkHelper
 
 object IncidentUiHelper {
 
@@ -31,6 +37,13 @@ object IncidentUiHelper {
     ) {
         binding.tvTitle.text = incident.title
         binding.tvHost.text = IncidentDisplayHelper.subtitle(incident)
+        SiteAddressUiHelper.bindCopyButton(
+            binding.btnCopySiteAddress,
+            incident.siteAddress,
+            binding.root
+        )
+        bindTrackerIssue(binding, incident)
+        PrometheusAlertUiHelper.bindFeatured(binding, incident)
         binding.tvMetric.text = IncidentDisplayHelper.promql(incident)
         binding.tvTime.text = IncidentDisplayHelper.alertTime(incident)
         val valueLine = IncidentDisplayHelper.metricValueLine(incident)
@@ -66,8 +79,11 @@ object IncidentUiHelper {
         binding: LayoutFeaturedIncidentBinding,
         incident: Incident
     ) {
-        binding.tvClosedInfo.isVisible = incident.status == IncidentStatus.CLOSED
-        if (incident.status != IncidentStatus.CLOSED) return
+        if (incident.status != IncidentStatus.CLOSED) {
+            binding.tvClosedInfo.isVisible = false
+            binding.tvCloseComment.isVisible = false
+            return
+        }
         val parts = buildList {
             incident.closedByUsername?.takeIf { it.isNotBlank() }?.let {
                 add(binding.root.context.getString(R.string.closed_by, it))
@@ -75,11 +91,10 @@ object IncidentUiHelper {
             incident.assignedEngineerUsername?.takeIf { it.isNotBlank() }?.let {
                 add(binding.root.context.getString(R.string.executed_by, it))
             }
-            incident.closeComment?.takeIf { it.isNotBlank() }?.let {
-                add(binding.root.context.getString(R.string.close_comment_label, it))
-            }
         }
         binding.tvClosedInfo.text = parts.joinToString("\n")
+        binding.tvClosedInfo.isVisible = parts.isNotEmpty()
+        IncidentCloseUiHelper.bindFeatured(binding, incident)
     }
 
     fun bindActions(
@@ -89,7 +104,7 @@ object IncidentUiHelper {
     ) {
         val actions = IncidentActionHelper.actionsFor(incident, currentUsername)
         binding.btnAccept.isVisible = actions.showAccept
-        binding.btnConfirm.isVisible = actions.showComplete
+        binding.btnConfirm.isVisible = false
         binding.btnClose.isVisible = actions.showClose
         val canOpenChart = IncidentGraphNavigator.chartQuery(incident) != null
         binding.btnGraphs.isVisible = true
@@ -98,7 +113,26 @@ object IncidentUiHelper {
         binding.chartMiniContainer.isClickable = canOpenChart
         binding.chartMiniContainer.isFocusable = canOpenChart
         binding.actionsRow.isVisible =
-            actions.showAccept || actions.showComplete || actions.showClose || binding.btnGraphs.isVisible
+            actions.showAccept || actions.showClose || binding.btnGraphs.isVisible
+    }
+
+    fun bindTrackerIssue(binding: LayoutFeaturedIncidentBinding, incident: Incident) {
+        val key = incident.visibleTrackerIssueKey()
+        binding.tvTrackerIssue.isVisible = key != null
+        if (key == null) {
+            binding.tvTrackerIssue.setOnClickListener(null)
+            return
+        }
+        binding.tvTrackerIssue.text =
+            binding.root.context.getString(R.string.tracker_issue_open, key)
+        val url = TrackerLinkHelper.urlFor(key)
+        binding.tvTrackerIssue.setOnClickListener {
+            url?.let { link ->
+                binding.root.context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse(link))
+                )
+            }
+        }
     }
 
     fun bindChart(
@@ -138,9 +172,9 @@ object IncidentUiHelper {
 
     fun statusLabelRes(status: IncidentStatus): Int = when (status) {
         IncidentStatus.NEW -> R.string.status_new
-        IncidentStatus.ACCEPTED -> R.string.status_accepted
+        IncidentStatus.ACCEPTED -> R.string.status_taken_in_work
         IncidentStatus.IN_PROGRESS -> R.string.status_in_progress
-        IncidentStatus.CONFIRMED -> R.string.status_completed
+        IncidentStatus.CONFIRMED -> R.string.status_in_progress
         IncidentStatus.CLOSED -> R.string.status_closed
         else -> R.string.status_new
     }

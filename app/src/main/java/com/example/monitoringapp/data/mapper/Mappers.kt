@@ -42,9 +42,17 @@ fun IncidentDto.toDomain(): Incident = IncidentWorkflow.normalize(
         canConfirm = canConfirm == true || canComplete == true,
         canClose = canClose == true,
         closeComment = resolveCloseComment(),
-        closedByUsername = closedByUsername ?: closedBy
+        closedByUsername = closedByUsername ?: closedByUsernameSnake ?: closedBy,
+        trackerIssueKey = trackerIssueKey?.trim()?.takeIf { it.isNotBlank() },
+        prometheusAlertActive = prometheusAlertActive,
+        siteAddress = resolveSiteAddress()
     )
 )
+
+private fun IncidentDto.resolveSiteAddress(): String? =
+    sequenceOf(siteAddress, siteAddressSnake)
+        .map { it?.trim() }
+        .firstOrNull { !it.isNullOrBlank() }
 
 private fun IncidentDto.resolveAlertTitle(): String =
     sequenceOf(alertName, alertNameSnake, metricName, name, title)
@@ -102,7 +110,8 @@ private fun IncidentDto.resolveSeverity(): IncidentSeverity =
     )
 
 private fun IncidentDto.resolveCloseComment(): String? =
-    sequenceOf(closeComment, resolutionComment, comment)
+    sequenceOf(closeComment, closeCommentSnake, resolutionComment, resolutionCommentSnake, comment)
+        .map { it?.trim() }
         .firstOrNull { !it.isNullOrBlank() }
 
 private fun IncidentDto.resolveAssignee(): String? =
@@ -235,6 +244,9 @@ fun Incident.toEntity(json: Json): IncidentEntity = IncidentEntity(
     canClose = canClose,
     closeComment = closeComment,
     closedByUsername = closedByUsername,
+    trackerIssueKey = trackerIssueKey,
+    prometheusAlertActive = prometheusAlertActive,
+    siteAddress = siteAddress,
     chartJson = if (chartPoints.isEmpty()) null else json.encodeToString(
         ListSerializer(MetricPointDto.serializer()),
         chartPoints.map { MetricPointDto(timestamp = it.timestamp, value = it.value) }
@@ -270,6 +282,9 @@ fun IncidentEntity.toDomain(json: Json): Incident {
             canClose = canClose,
             closeComment = closeComment,
             closedByUsername = closedByUsername,
+            trackerIssueKey = trackerIssueKey,
+            prometheusAlertActive = prometheusAlertActive,
+            siteAddress = siteAddress,
             chartPoints = points
         )
     )

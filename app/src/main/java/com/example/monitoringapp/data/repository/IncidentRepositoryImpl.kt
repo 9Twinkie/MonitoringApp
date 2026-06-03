@@ -5,27 +5,30 @@ import com.example.monitoringapp.data.local.dao.IncidentDao
 import com.example.monitoringapp.data.local.entity.IncidentEntity
 import com.example.monitoringapp.data.local.dao.PendingActionDao
 import com.example.monitoringapp.data.local.entity.PendingActionEntity
-import com.example.monitoringapp.data.model.CloseIncidentRequest
+import com.example.monitoringapp.data.model.IncidentDto
 import com.example.monitoringapp.data.mapper.ChartDataMapper
 import com.example.monitoringapp.data.mapper.ChartRangeMapper
 import com.example.monitoringapp.domain.model.ChartTimeRange
+import com.example.monitoringapp.data.mapper.IncidentListJsonParser
+import com.example.monitoringapp.data.mapper.IncidentMutationValidator
 import com.example.monitoringapp.data.mapper.toDomain
 import com.example.monitoringapp.data.mapper.toEntity
 import com.example.monitoringapp.domain.model.IncidentChartData
 import com.example.monitoringapp.domain.model.MetricPoint
-import com.example.monitoringapp.data.remote.NetworkMonitor
+import com.example.monitoringapp.data.local.TokenStorage
 import com.example.monitoringapp.domain.model.Incident
 import com.example.monitoringapp.domain.model.IncidentStatus
 import com.example.monitoringapp.domain.model.IncidentWorkflow
-import com.example.monitoringapp.domain.repository.AuthRepository
-import com.example.monitoringapp.domain.repository.IncidentRepository
+import com.example.monitoringapp.data.remote.NetworkMonitor
 import com.example.monitoringapp.utils.ApiErrorMapper
+import com.example.monitoringapp.domain.repository.IncidentRepository
 import com.example.monitoringapp.utils.IncidentDisplayHelper
-import kotlinx.coroutines.flow.Flow
+import com.example.monitoringapp.utils.CloseIncidentPayload
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
 import retrofit2.HttpException
+import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -35,7 +38,7 @@ class IncidentRepositoryImpl @Inject constructor(
     private val incidentDao: IncidentDao,
     private val pendingActionDao: PendingActionDao,
     private val networkMonitor: NetworkMonitor,
-    private val authRepository: AuthRepository,
+    private val tokenStorage: TokenStorage,
     private val json: Json
 ) : IncidentRepository {
 
@@ -54,7 +57,9 @@ class IncidentRepositoryImpl @Inject constructor(
         }
         return try {
             val previous = incidentDao.observeAll().first().associateBy { it.id }
-            val remote = api.getIncidents().map { dto ->
+            val body = fetchIncidentsBody()
+            val dtos = IncidentListJsonParser.parseList(json, body)
+            val remote = dtos.map { dto ->
                 val remoteIncident = IncidentWorkflow.normalize(dto.toDomain())
                 val localEntity = previous[dto.id]
                 if (localEntity == null) {
@@ -73,9 +78,16 @@ class IncidentRepositoryImpl @Inject constructor(
             incidentDao.replaceAll(entities)
             Result.success(remote)
         } catch (e: Exception) {
+            if (e is HttpException && e.code() in AUTH_RELATED_CODES) {
+                return Result.failure(IllegalStateException(ApiErrorMapper.toMessage(e), e))
+            }
             val cached = incidentDao.observeAll().first().map { it.toDomain(json) }
             if (cached.isNotEmpty()) Result.success(cached) else Result.failure(e)
         }
+    }
+
+    override suspend fun clearLocalCache() {
+        incidentDao.clear()
     }
 
     override suspend fun getIncident(id: Long): Incident? {
@@ -195,116 +207,101 @@ class IncidentRepositoryImpl @Inject constructor(
     private fun parseRangeResponse(dto: com.example.monitoringapp.data.model.PrometheusQueryRangeDto?): List<MetricPoint>? =
         dto?.let { ChartDataMapper.fromPrometheusRange(it) }?.takeIf { it.isNotEmpty() }
 
-    override suspend fun confirmIncident(id: Long): Result<Unit> =
-        performAction(id, ACTION_CONFIRM) { api.confirmIncident(id) }
-
     override suspend fun closeIncident(id: Long, comment: String?): Result<Unit> =
-        performAction(id, ACTION_CLOSE, comment) {
-            val text = comment?.trim()?.takeIf { it.isNotBlank() }
-            api.closeIncident(
+        performMutation(id, ACTION_CLOSE, comment) {
+            val dto = api.closeIncidentWithComment(
                 id,
-                CloseIncidentRequest(comment = text, resolutionComment = text)
+                CloseIncidentPayload.request(comment)
             )
+            IncidentMutationValidator.validateCloseResponse(dto)
+            dto
         }
 
     override suspend fun acceptIncident(id: Long): Result<Unit> =
-        performAction(id, ACTION_ACCEPT) { api.acceptIncident(id) }
+        performMutation(id, ACTION_TAKE) {
+            val dto = api.takeIncident(id)
+            IncidentMutationValidator.validateTakeResponse(dto)
+            dto
+        }
 
     override suspend fun syncPendingActions(): Result<Unit> = runCatching {
         if (!networkMonitor.checkOnline()) return@runCatching
         val pending = pendingActionDao.getAll()
         for (action in pending) {
             when (action.action) {
-                ACTION_CONFIRM -> api.confirmIncident(action.incidentId)
-                ACTION_ACCEPT -> api.acceptIncident(action.incidentId)
-                ACTION_CLOSE -> api.closeIncident(action.incidentId)
+                ACTION_TAKE, ACTION_ACCEPT, ACTION_CONFIRM -> {
+                    val dto = api.takeIncident(action.incidentId)
+                    IncidentMutationValidator.validateTakeResponse(dto)
+                    upsertFromDto(dto)
+                }
+                ACTION_CLOSE -> {
+                    val dto = api.closeIncidentWithComment(
+                        action.incidentId,
+                        CloseIncidentPayload.request(action.comment)
+                    )
+                    IncidentMutationValidator.validateCloseResponse(dto)
+                    persistMutationResult(dto, action.comment)
+                }
             }
             pendingActionDao.delete(action.id)
         }
         refreshIncidents()
     }
 
-    private suspend fun performAction(
+    private suspend fun performMutation(
         incidentId: Long,
         action: String,
         comment: String? = null,
-        block: suspend () -> Unit
+        block: suspend () -> IncidentDto
     ): Result<Unit> {
         if (!networkMonitor.checkOnline()) {
             pendingActionDao.insert(
-                PendingActionEntity(incidentId = incidentId, action = action)
+                PendingActionEntity(
+                    incidentId = incidentId,
+                    action = action,
+                    comment = comment?.trim()?.takeIf { it.isNotBlank() }
+                )
             )
-            patchLocalAfterAction(incidentId, action, comment)
-            return Result.success(Unit)
+            return Result.failure(
+                IllegalStateException("Нет сети. Действие сохранено и будет отправлено позже.")
+            )
         }
 
-        val apiError = runCatching { block() }.exceptionOrNull()
-        patchLocalAfterAction(incidentId, action, comment)
-        runCatching { refreshIncidents() }
-        patchLocalAfterAction(incidentId, action, comment)
-
-        if (apiError == null) return Result.success(Unit)
-
-        if (apiError is HttpException && apiError.code() in AUTH_RELATED_CODES) {
-            val patched = incidentDao.getById(incidentId)?.toDomain(json)
-            if (patched != null && mutationLooksApplied(patched, action)) {
-                return Result.success(Unit)
-            }
-            val remote = runCatching {
-                IncidentWorkflow.normalize(api.getIncident(incidentId).toDomain())
-            }.getOrNull()
-            if (remote != null && mutationLooksApplied(remote, action)) {
-                incidentDao.insertAll(listOf(remote.toEntity(json)))
-                return Result.success(Unit)
-            }
-            if (incidentDao.getById(incidentId) != null) {
-                return Result.success(Unit)
-            }
+        return try {
+            val dto = block()
+            persistMutationResult(
+                dto,
+                closeComment = if (action == ACTION_CLOSE) comment else null
+            )
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(IllegalStateException(ApiErrorMapper.toMessage(e), e))
         }
-
-        return Result.failure(IllegalStateException(ApiErrorMapper.toMessage(apiError), apiError))
     }
 
-    private fun mutationLooksApplied(incident: Incident, action: String): Boolean = when (action) {
-        ACTION_ACCEPT -> incident.status.isInProgress() || incident.hasAssignee()
-        ACTION_CONFIRM -> incident.status == IncidentStatus.CONFIRMED || incident.canClose
-        ACTION_CLOSE -> incident.status == IncidentStatus.CLOSED
-        else -> false
+    private suspend fun persistMutationResult(dto: IncidentDto, closeComment: String? = null) {
+        upsertFromDto(dto, closeComment)
+        runCatching { api.getIncident(dto.id) }
+            .getOrNull()
+            ?.let { upsertFromDto(it, closeComment) }
     }
 
-    private suspend fun patchLocalAfterAction(
-        incidentId: Long,
-        action: String,
-        comment: String? = null
-    ) {
-        val entity = incidentDao.getById(incidentId) ?: return
-        val username = authRepository.getUsername()
-        val patched = when (action) {
-            ACTION_ACCEPT -> entity.copy(
-                status = IncidentStatus.IN_PROGRESS.name,
-                assignedEngineerUsername = username ?: entity.assignedEngineerUsername,
-                canAccept = false,
-                canConfirm = true,
-                canClose = false
+    private suspend fun upsertFromDto(dto: IncidentDto, requestedCloseComment: String? = null) {
+        var domain = dto.toDomain()
+        if (domain.status == IncidentStatus.CLOSED) {
+            domain = domain.copy(
+                closeComment = domain.closeComment?.trim()?.takeIf { it.isNotBlank() }
+                    ?: requestedCloseComment?.let { CloseIncidentPayload.storageComment(it) },
+                closedByUsername = domain.closedByUsername ?: tokenStorage.getDisplayLogin()
             )
-            ACTION_CONFIRM -> entity.copy(
-                status = IncidentStatus.CONFIRMED.name,
-                canAccept = false,
-                canConfirm = false,
-                canClose = true
-            )
-            ACTION_CLOSE -> entity.copy(
-                status = IncidentStatus.CLOSED.name,
-                canAccept = false,
-                canConfirm = false,
-                canClose = false,
-                closeComment = comment?.trim()?.takeIf { it.isNotBlank() } ?: entity.closeComment,
-                closedByUsername = username ?: entity.closedByUsername
-            )
-            else -> return
         }
-        incidentDao.insertAll(listOf(patched))
+        val entity = IncidentWorkflow.normalize(domain).toEntity(json)
+        incidentDao.insertAll(listOf(entity))
     }
+
+    private suspend fun fetchIncidentsBody(): String =
+        runCatching { api.getIncidentsRaw(scope = "all").string() }
+            .getOrElse { api.getAlertsRaw(scope = "all").string() }
 
     private fun incidentsDashboardDataChanged(
         previous: List<IncidentEntity>,
@@ -319,14 +316,20 @@ class IncidentRepositoryImpl @Inject constructor(
                 entity.host != incident.host ||
                 entity.title != incident.title ||
                 entity.description != incident.description ||
-                entity.metricName != incident.metricName
+                entity.metricName != incident.metricName ||
+                entity.prometheusAlertActive != incident.prometheusAlertActive ||
+                entity.siteAddress != incident.siteAddress ||
+                entity.closeComment != incident.closeComment ||
+                entity.closedByUsername != incident.closedByUsername
         }
     }
 
     companion object {
-        const val ACTION_CONFIRM = "CONFIRM"
+        const val ACTION_TAKE = "TAKE"
         const val ACTION_CLOSE = "CLOSE"
+        /** Legacy значения в очереди офлайн-действий. */
         const val ACTION_ACCEPT = "ACCEPT"
+        const val ACTION_CONFIRM = "CONFIRM"
         private val AUTH_RELATED_CODES = setOf(401, 403)
     }
 }

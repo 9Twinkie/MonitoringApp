@@ -17,9 +17,23 @@
             android:layout_height="wrap_content"
             android:textAppearance="@style/TextAppearance.Monitoring.Body"
             android:textStyle="bold"
-            app:layout_constraintEnd_toStartOf="@id/tvSeverity"
+            app:layout_constraintEnd_toStartOf="@id/btnCopySiteAddress"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
+
+        <ImageButton
+            android:id="@+id/btnCopySiteAddress"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/site_address_copy_action"
+            android:padding="4dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_place"
+            android:visibility="gone"
+            app:layout_constraintEnd_toStartOf="@id/tvSeverity"
+            app:layout_constraintTop_toTopOf="parent"
+            app:tint="@color/primary" />
 
         <TextView
             android:id="@+id/tvSeverity"
@@ -42,6 +56,21 @@
             app:layout_constraintTop_toBottomOf="@id/tvTitle" />
 
         <TextView
+            android:id="@+id/tvPrometheusAlert"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/spacing_sm"
+            android:layout_marginTop="@dimen/spacing_xs"
+            android:background="@drawable/bg_severity_info"
+            android:paddingHorizontal="@dimen/spacing_sm"
+            android:paddingVertical="2dp"
+            android:textAppearance="@style/TextAppearance.Monitoring.Caption"
+            android:textStyle="bold"
+            android:visibility="gone"
+            app:layout_constraintStart_toEndOf="@id/tvStatus"
+            app:layout_constraintTop_toBottomOf="@id/tvTitle" />
+
+        <TextView
             android:id="@+id/tvId"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -60,6 +89,18 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/tvStatus" />
 
+        <TextView
+            android:id="@+id/tvCloseComment"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textAppearance="@style/TextAppearance.Monitoring.Caption"
+            android:textColor="@color/text_secondary"
+            android:visibility="gone"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tvAssignedEngineer" />
+
         <com.example.monitoringapp.ui.widget.MonitoringButton
             android:id="@+id/btnAccept"
             android:layout_width="wrap_content"
@@ -70,7 +111,7 @@
             app:buttonVariant="primary"
             app:compact="true"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/tvAssignedEngineer" />
+            app:layout_constraintTop_toBottomOf="@id/tvCloseComment" />
 
         <com.example.monitoringapp.ui.widget.MonitoringButton
             android:id="@+id/btnConfirm"
@@ -83,7 +124,7 @@
             app:buttonVariant="secondary"
             app:compact="true"
             app:layout_constraintStart_toEndOf="@id/btnAccept"
-            app:layout_constraintTop_toBottomOf="@id/tvAssignedEngineer" />
+            app:layout_constraintTop_toBottomOf="@id/tvCloseComment" />
 
         <com.example.monitoringapp.ui.widget.MonitoringButton
             android:id="@+id/btnClose"
@@ -96,7 +137,7 @@
             app:buttonVariant="outlined"
             app:compact="true"
             app:layout_constraintStart_toEndOf="@id/btnConfirm"
-            app:layout_constraintTop_toBottomOf="@id/tvAssignedEngineer" />
+            app:layout_constraintTop_toBottomOf="@id/tvCloseComment" />
 
         <com.example.monitoringapp.ui.widget.MonitoringButton
             android:id="@+id/btnGraphs"
@@ -107,6 +148,6 @@
             app:buttonVariant="outlined"
             app:compact="true"
             app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/tvAssignedEngineer" />
+            app:layout_constraintTop_toBottomOf="@id/tvCloseComment" />
     </androidx.constraintlayout.widget.ConstraintLayout>
 </com.google.android.material.card.MaterialCardView>

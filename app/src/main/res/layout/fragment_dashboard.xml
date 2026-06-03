@@ -35,11 +35,11 @@
                     android:id="@+id/searchLayout"
                     style="@style/Widget.Monitoring.Search"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    app:startIconDrawable="@android:drawable/ic_menu_search">
+                    android:layout_height="wrap_content">
 
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/etSearch"
+                        style="@style/Widget.Monitoring.TextInputEditText.Search"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:hint="@string/search_objects_hint"

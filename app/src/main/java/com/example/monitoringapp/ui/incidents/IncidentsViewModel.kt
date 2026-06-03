@@ -3,7 +3,6 @@ package com.example.monitoringapp.ui.incidents
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.monitoringapp.data.remote.NotificationEventBus
 import com.example.monitoringapp.domain.model.ChartTimeRange
 import com.example.monitoringapp.domain.model.Incident
 import com.example.monitoringapp.domain.model.IncidentChartData
@@ -11,6 +10,7 @@ import com.example.monitoringapp.domain.model.IncidentStatus
 import com.example.monitoringapp.domain.repository.AuthRepository
 import com.example.monitoringapp.domain.repository.FavoriteRepository
 import com.example.monitoringapp.domain.repository.IncidentRepository
+import com.example.monitoringapp.utils.ApiErrorMapper
 import com.example.monitoringapp.utils.DashboardEnricher
 import com.example.monitoringapp.utils.TargetMatcher
 import com.example.monitoringapp.utils.UiState
@@ -25,11 +25,19 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 enum class IncidentTab { ACTIVE, IN_PROGRESS, FAVORITES, HISTORY }
+
+private data class FeaturedChartTarget(
+    val epoch: Int,
+    val tab: IncidentTab,
+    val incident: Incident?
+)
 
 data class FeaturedIncidentUi(
     val incident: Incident?,
@@ -39,7 +47,7 @@ data class FeaturedIncidentUi(
     fun contentKey(): String? = incident?.let {
         "${it.id}:${it.status}:${it.metricValue}:${it.title}:" +
             "${it.assignedEngineerUsername}:${it.canAccept}:${it.canConfirm}:${it.canClose}:" +
-            "${it.closeComment}:${it.closedByUsername}"
+            "${it.closeComment}:${it.closedByUsername}:${it.prometheusAlertActive}:${it.siteAddress}"
     }
 
     fun chartKey(): String {
@@ -64,8 +72,7 @@ class IncidentsViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val incidentRepository: IncidentRepository,
     private val favoriteRepository: FavoriteRepository,
-    private val authRepository: AuthRepository,
-    eventBus: NotificationEventBus
+    private val authRepository: AuthRepository
 ) : ViewModel() {
 
     private val filterHost: String? = savedStateHandle["filterHost"]
@@ -85,12 +92,20 @@ class IncidentsViewModel @Inject constructor(
     private val _actionState = MutableStateFlow<UiState<String>>(UiState.Idle)
     val actionState: StateFlow<UiState<String>> = _actionState.asStateFlow()
 
+    private val _loadError = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val loadError: SharedFlow<String> = _loadError.asSharedFlow()
+
     private val _promptCloseIncidentId = MutableSharedFlow<Long>(extraBufferCapacity = 1)
     val promptCloseIncidentId: SharedFlow<Long> = _promptCloseIncidentId.asSharedFlow()
+
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
     private val _featuredChart = MutableStateFlow(IncidentChartData())
     private val _chartLoading = MutableStateFlow(false)
     private val _selectedIncidentId = MutableStateFlow<Long?>(null)
+    /** Смена вкладки/поиска/выбора — принудительно перезагрузить график featured. */
+    private val _chartEpoch = MutableStateFlow(0)
 
     private var chartIncidentId: Long? = null
     private var chartJob: Job? = null
@@ -141,6 +156,11 @@ class IncidentsViewModel @Inject constructor(
             ),
             others = others
         )
+    }.distinctUntilChanged { old, new ->
+        old.featured.contentKey() == new.featured.contentKey() &&
+            old.featured.chartKey() == new.featured.chartKey() &&
+            old.others.map { "${it.id}:${it.status}:${it.closeComment}:${it.closedByUsername}" } ==
+            new.others.map { "${it.id}:${it.status}:${it.closeComment}:${it.closedByUsername}" }
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000, replayExpirationMillis = Long.MAX_VALUE),
@@ -149,9 +169,28 @@ class IncidentsViewModel @Inject constructor(
 
     init {
         objectFilterLabel?.let { _searchQuery.value = it }
-        refresh()
+        refresh(silent = true)
         viewModelScope.launch {
-            eventBus.messages.collect { refresh() }
+            combine(filteredIncidents, _tab, _selectedIncidentId, _chartEpoch) { list, tab, selectedId, epoch ->
+                FeaturedChartTarget(
+                    epoch = epoch,
+                    tab = tab,
+                    incident = selectedId?.let { id -> list.firstOrNull { it.id == id } }
+                        ?: list.firstOrNull()
+                )
+            }
+                .distinctUntilChanged { old, new ->
+                    old.epoch == new.epoch &&
+                        old.tab == new.tab &&
+                        old.incident?.id == new.incident?.id
+                }
+                .collect { target ->
+                    if (target.incident != null) {
+                        loadFeaturedChart(target.incident, target.epoch)
+                    } else {
+                        cancelChartLoad()
+                    }
+                }
         }
     }
 
@@ -174,15 +213,13 @@ class IncidentsViewModel @Inject constructor(
     fun setTab(tab: IncidentTab) {
         _tab.value = tab
         _selectedIncidentId.value = null
-        chartIncidentId = null
-        _featuredChart.value = IncidentChartData()
+        requestChartReload()
     }
 
     fun setSearchQuery(query: String) {
         _searchQuery.value = query
         _selectedIncidentId.value = null
-        chartIncidentId = null
-        _featuredChart.value = IncidentChartData()
+        requestChartReload()
     }
 
     fun selectIncident(incident: Incident) {
@@ -193,32 +230,88 @@ class IncidentsViewModel @Inject constructor(
             return
         }
         _selectedIncidentId.value = incident.id
-        chartIncidentId = null
-        _featuredChart.value = IncidentChartData()
-        loadChartFor(incident)
+        requestChartReload()
     }
 
-    fun refresh() {
-        viewModelScope.launch {
-            incidentRepository.refreshIncidents()
+    /** Повторная попытка, если ViewHolder пересоздан или первая загрузка не удалась. */
+    fun refreshFeaturedChartIfEmpty() {
+        val incident = alertsScreen.value.featured.incident ?: return
+        if (_featuredChart.value.points.isEmpty() && chartJob?.isActive != true) {
+            requestChartReload()
         }
     }
 
-    fun loadChartFor(incident: Incident) {
-        if (chartIncidentId == incident.id && _featuredChart.value.points.isNotEmpty()) return
+    fun refresh(silent: Boolean = false) {
+        viewModelScope.launch {
+            if (!silent) _isRefreshing.value = true
+            incidentRepository.refreshIncidents().onFailure { error ->
+                _loadError.emit(ApiErrorMapper.toMessage(error))
+            }
+            if (!silent) _isRefreshing.value = false
+        }
+    }
+
+    private fun requestChartReload() {
+        cancelChartLoad()
+        _chartEpoch.value++
+    }
+
+    private fun cancelChartLoad() {
+        chartJob?.cancel()
+        chartJob = null
+        chartIncidentId = null
+        chartLoadEpoch = -1
+        _featuredChart.value = IncidentChartData()
+        _chartLoading.value = false
+    }
+
+    private var chartLoadEpoch: Int = -1
+
+    private fun loadFeaturedChart(incident: Incident, epoch: Int) {
         if (chartIncidentId == incident.id && chartJob?.isActive == true) return
+        if (chartIncidentId == incident.id &&
+            _featuredChart.value.points.isNotEmpty() &&
+            chartLoadEpoch == epoch
+        ) {
+            return
+        }
+        if (chartIncidentId == incident.id &&
+            _featuredChart.value.points.isEmpty() &&
+            chartLoadEpoch == epoch &&
+            chartJob == null
+        ) {
+            return
+        }
+
         chartJob?.cancel()
         chartIncidentId = incident.id
+        chartLoadEpoch = epoch
+
+        if (incident.chartPoints.isNotEmpty()) {
+            _featuredChart.value = IncidentChartData(
+                points = incident.chartPoints,
+                threshold = incident.threshold,
+                promql = incident.metricName
+            )
+        } else {
+            _featuredChart.value = IncidentChartData()
+        }
+
         chartJob = viewModelScope.launch {
-            val showLoading = _featuredChart.value.points.isEmpty()
-            if (showLoading) _chartLoading.value = true
-            incidentRepository.loadIncidentChart(incident, ChartTimeRange.HOUR.minutes).onSuccess { chart ->
-                if (chartIncidentId == incident.id) {
-                    _featuredChart.value = chart
+            val targetId = incident.id
+            _chartLoading.value = true
+            try {
+                incidentRepository.loadIncidentChart(incident, ChartTimeRange.HOUR.minutes)
+                    .onSuccess { chart ->
+                        if (chartIncidentId != targetId) return@onSuccess
+                        if (chart.points.isNotEmpty() || _featuredChart.value.points.isEmpty()) {
+                            _featuredChart.value = chart
+                        }
+                    }
+            } finally {
+                if (chartIncidentId == targetId) {
+                    _chartLoading.value = false
                 }
-            }
-            if (chartIncidentId == incident.id && showLoading) {
-                _chartLoading.value = false
             }
         }
     }
@@ -228,15 +321,6 @@ class IncidentsViewModel @Inject constructor(
         successMessage = "ACCEPTED",
         onSuccess = { _tab.value = IncidentTab.IN_PROGRESS }
     ) { incidentRepository.acceptIncident(id) }
-
-    fun complete(id: Long) = perform(
-        incidentId = id,
-        successMessage = "COMPLETED",
-        onSuccess = {
-            _tab.value = IncidentTab.IN_PROGRESS
-            viewModelScope.launch { _promptCloseIncidentId.emit(id) }
-        }
-    ) { incidentRepository.confirmIncident(id) }
 
     fun close(id: Long, comment: String? = null) = perform(
         incidentId = id,
@@ -258,8 +342,7 @@ class IncidentsViewModel @Inject constructor(
                 onSuccess = {
                     onSuccess?.invoke()
                     _selectedIncidentId.value = incidentId
-                    chartIncidentId = null
-                    _featuredChart.value = IncidentChartData()
+                    requestChartReload()
                     UiState.Success(successMessage)
                 },
                 onFailure = { UiState.Error(it.message ?: "Ошибка") }

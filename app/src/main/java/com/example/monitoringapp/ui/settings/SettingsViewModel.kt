@@ -34,6 +34,9 @@ class SettingsViewModel @Inject constructor(
     private val _username = MutableStateFlow(authRepository.getUsername())
     val username: StateFlow<String?> = _username.asStateFlow()
 
+    private val _canManageUsers = MutableStateFlow(false)
+    val canManageUsers: StateFlow<Boolean> = _canManageUsers.asStateFlow()
+
     init {
         refreshProfile()
     }
@@ -41,15 +44,29 @@ class SettingsViewModel @Inject constructor(
     fun refreshProfile() {
         viewModelScope.launch {
             authRepository.refreshProfile()
-            _userRole.value = authRepository.getUserRole()
-            _username.value = authRepository.getUsername()
+                .onSuccess {
+                    _userRole.value = authRepository.getUserRole()
+                    _username.value = authRepository.getUsername()
+                    _canManageUsers.value = authRepository.getUserRole().isAdmin
+                }
+                .onFailure {
+                    _canManageUsers.value = false
+                }
         }
     }
 
     fun isAdmin(): Boolean = _userRole.value.isAdmin
 
-    fun saveBaseUrl(url: String) {
+    fun currentBaseUrl(): String = sessionRepository.getBaseUrl()
+
+    fun saveBaseUrl(url: String): Boolean {
+        val wasLoggedIn = authRepository.isLoggedIn()
         sessionRepository.setBaseUrl(url)
+        val sessionReset = wasLoggedIn && !authRepository.isLoggedIn()
+        if (sessionReset) {
+            _canManageUsers.value = false
+        }
+        return sessionReset
     }
 
     fun setNotifyFavoritesOnly(enabled: Boolean) {

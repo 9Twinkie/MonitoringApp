@@ -13,11 +13,13 @@ import com.example.monitoringapp.data.repository.FavoriteRepositoryImpl
 import com.example.monitoringapp.data.repository.IncidentRepositoryImpl
 import com.example.monitoringapp.data.repository.MetricsRepositoryImpl
 import com.example.monitoringapp.data.repository.SessionRepositoryImpl
+import com.example.monitoringapp.data.repository.TerminalRepositoryImpl
 import com.example.monitoringapp.domain.repository.AuthRepository
 import com.example.monitoringapp.domain.repository.FavoriteRepository
 import com.example.monitoringapp.domain.repository.IncidentRepository
 import com.example.monitoringapp.domain.repository.MetricsRepository
 import com.example.monitoringapp.domain.repository.SessionRepository
+import com.example.monitoringapp.domain.repository.TerminalRepository
 import com.example.monitoringapp.data.repository.UserRepositoryImpl
 import com.example.monitoringapp.domain.repository.UserRepository
 import dagger.Binds
@@ -49,6 +51,9 @@ abstract class RepositoryModule {
 
     @Binds @Singleton
     abstract fun bindUsers(impl: UserRepositoryImpl): UserRepository
+
+    @Binds @Singleton
+    abstract fun bindTerminal(impl: TerminalRepositoryImpl): TerminalRepository
 }
 
 @Module

@@ -11,6 +11,7 @@ import com.example.monitoringapp.data.model.LoginResponse
 import com.example.monitoringapp.data.model.PrometheusOverviewDto
 import com.example.monitoringapp.data.model.PrometheusQueryRangeDto
 import okhttp3.ResponseBody
+import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
@@ -27,16 +28,19 @@ interface MonitoringApi {
     suspend fun getAuthMe(): AuthMeDto
 
     @GET("admin/users")
-    suspend fun getAdminUsersRaw(): ResponseBody
+    suspend fun getAdminUsersRaw(): Response<ResponseBody>
 
     @POST("admin/users")
-    suspend fun createAdminUserRaw(@Body request: CreateUserRequest): ResponseBody
+    suspend fun createAdminUserRaw(@Body request: CreateUserRequest): Response<ResponseBody>
 
     @DELETE("admin/users/{id}")
     suspend fun deleteAdminUser(@Path("id") id: Long)
 
     @GET("incidents")
-    suspend fun getIncidents(): List<IncidentDto>
+    suspend fun getIncidentsRaw(@Query("scope") scope: String = "all"): ResponseBody
+
+    @GET("alerts")
+    suspend fun getAlertsRaw(@Query("scope") scope: String = "all"): ResponseBody
 
     @GET("incidents/{id}")
     suspend fun getIncident(@Path("id") id: Long): IncidentDto
@@ -104,17 +108,18 @@ interface MonitoringApi {
         @Query("limit") limit: Int? = 50
     ): ResponseBody
 
-    @POST("incidents/{id}/accept")
-    suspend fun acceptIncident(@Path("id") id: Long)
-
     @POST("incidents/{id}/confirm")
-    suspend fun confirmIncident(@Path("id") id: Long)
+    suspend fun takeIncident(@Path("id") id: Long): IncidentDto
+
+    /** Пустой POST — как в контракте бэкенда (без JSON-тела). */
+    @POST("incidents/{id}/close")
+    suspend fun closeIncident(@Path("id") id: Long): IncidentDto
 
     @POST("incidents/{id}/close")
-    suspend fun closeIncident(
+    suspend fun closeIncidentWithComment(
         @Path("id") id: Long,
-        @Body request: CloseIncidentRequest = CloseIncidentRequest()
-    )
+        @Body request: CloseIncidentRequest
+    ): IncidentDto
 
     @GET("monitoring/prometheus/overview")
     suspend fun getMetricsOverviewRaw(): ResponseBody

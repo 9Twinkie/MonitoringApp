@@ -52,14 +52,16 @@ class SettingsFragment : Fragment() {
                 launch {
                     viewModel.userRole.collect { role ->
                         binding.tvRole.text = roleLabel(role)
-                        binding.btnManageUsers.isVisible = role.isAdmin
+                    }
+                }
+                launch {
+                    viewModel.canManageUsers.collect { canManage ->
+                        binding.btnManageUsers.isVisible = canManage
                     }
                 }
                 launch {
                     viewModel.baseUrl.collect { url ->
-                        if (binding.etServerUrl.text.isNullOrBlank()) {
-                            binding.etServerUrl.setText(url)
-                        }
+                        binding.etServerUrl.setText(url)
                     }
                 }
                 launch {
@@ -85,8 +87,20 @@ class SettingsFragment : Fragment() {
         binding.btnSave.setOnClickListener {
             val url = binding.etServerUrl.text?.toString().orEmpty()
             if (url.isNotBlank()) {
-                viewModel.saveBaseUrl(url)
-                Snackbar.make(binding.root, R.string.btn_save, Snackbar.LENGTH_SHORT).show()
+                val sessionReset = viewModel.saveBaseUrl(url)
+                val message = if (sessionReset) {
+                    R.string.server_url_changed_relogin
+                } else {
+                    R.string.btn_save
+                }
+                Snackbar.make(binding.root, message, Snackbar.LENGTH_LONG).show()
+                if (sessionReset) {
+                    WebSocketForegroundService.stop(requireContext())
+                    val options = NavOptions.Builder()
+                        .setPopUpTo(R.id.mobile_navigation, true)
+                        .build()
+                    findNavController().navigate(R.id.loginFragment, null, options)
+                }
             }
         }
 
@@ -103,6 +117,7 @@ class SettingsFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         viewModel.refreshProfile()
+        binding.etServerUrl.setText(viewModel.currentBaseUrl())
     }
 
     private fun roleLabel(role: UserRole): String = when (role) {

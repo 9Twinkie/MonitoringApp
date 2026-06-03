@@ -30,7 +30,9 @@ data class AuthMeDto(
     val roles: List<String>? = null,
     val authorities: List<String>? = null,
     val phone: String? = null,
-    val notificationPrefs: String? = null
+    val notificationPrefs: String? = null,
+    @SerialName("trackerLogin") val trackerLogin: String? = null,
+    @SerialName("tracker_login") val trackerLoginSnake: String? = null
 )
 
 @Serializable
@@ -49,7 +51,8 @@ data class AdminUserDto(
     @SerialName("phoneNumber") val phoneNumber: String? = null,
     val notificationPrefs: String? = null,
     @SerialName("notification_prefs") val notificationPrefsSnake: String? = null,
-    @SerialName("notificationPreferences") val notificationPreferences: String? = null
+    @SerialName("notificationPreferences") val notificationPreferences: String? = null,
+    @SerialName("trackerLogin") val trackerLogin: String? = null
 )
 
 @Serializable
@@ -58,7 +61,8 @@ data class CreateUserRequest(
     val password: String,
     val role: String,
     val phone: String? = null,
-    val notificationPrefs: String = "push"
+    val notificationPrefs: String? = null,
+    @SerialName("trackerLogin") val trackerLogin: String? = null
 )
 
 @Serializable
@@ -109,10 +113,17 @@ data class IncidentDto(
     @SerialName("canConfirm") val canConfirm: Boolean? = null,
     @SerialName("canComplete") val canComplete: Boolean? = null,
     @SerialName("canClose") val canClose: Boolean? = null,
+    @SerialName("trackerIssueKey") val trackerIssueKey: String? = null,
+    @SerialName("prometheusAlertActive") val prometheusAlertActive: Boolean? = null,
+    @SerialName("siteAddress") val siteAddress: String? = null,
+    @SerialName("site_address") val siteAddressSnake: String? = null,
     @SerialName("closeComment") val closeComment: String? = null,
+    @SerialName("close_comment") val closeCommentSnake: String? = null,
     val comment: String? = null,
     @SerialName("resolutionComment") val resolutionComment: String? = null,
+    @SerialName("resolution_comment") val resolutionCommentSnake: String? = null,
     @SerialName("closedByUsername") val closedByUsername: String? = null,
+    @SerialName("closed_by_username") val closedByUsernameSnake: String? = null,
     val closedBy: String? = null,
     @SerialName("chartData") val chartData: List<MetricPointDto>? = null,
     val history: List<MetricPointDto>? = null,

@@ -11,12 +11,18 @@ class DynamicBaseUrlInterceptor @Inject constructor(
 ) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val original = chain.request()
-        val base = tokenStorage.getBaseUrl().toHttpUrlOrNull() ?: return chain.proceed(original)
-        val newUrl = base.newBuilder()
-            .encodedPath(original.url.encodedPath)
-            .query(original.url.query)
+        val configuredBase = tokenStorage.getBaseUrl().toHttpUrlOrNull()
+            ?: return chain.proceed(original)
+
+        val rebuilt = original.url.newBuilder()
+            .scheme(configuredBase.scheme)
+            .host(configuredBase.host)
+            .port(configuredBase.port)
             .build()
-        val request = original.newBuilder().url(newUrl).build()
-        return chain.proceed(request)
+
+        if (rebuilt == original.url) {
+            return chain.proceed(original)
+        }
+        return chain.proceed(original.newBuilder().url(rebuilt).build())
     }
 }

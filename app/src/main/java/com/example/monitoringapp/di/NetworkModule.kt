@@ -3,6 +3,7 @@ package com.example.monitoringapp.di
 import com.example.monitoringapp.data.api.AuthInterceptor
 import com.example.monitoringapp.data.api.DynamicBaseUrlInterceptor
 import com.example.monitoringapp.data.api.MonitoringApi
+import com.example.monitoringapp.data.api.TerminalApi
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import dagger.Module
 import dagger.Provides
@@ -54,4 +55,8 @@ object NetworkModule {
     @Provides @Singleton
     fun provideApi(retrofit: Retrofit): MonitoringApi =
         retrofit.create(MonitoringApi::class.java)
+
+    @Provides @Singleton
+    fun provideTerminalApi(retrofit: Retrofit): TerminalApi =
+        retrofit.create(TerminalApi::class.java)
 }

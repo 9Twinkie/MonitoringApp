@@ -10,6 +10,7 @@ import com.example.monitoringapp.domain.model.MonitoringObject
 import com.example.monitoringapp.domain.repository.FavoriteRepository
 import com.example.monitoringapp.domain.repository.IncidentRepository
 import com.example.monitoringapp.domain.repository.MetricsRepository
+import com.example.monitoringapp.utils.ApiErrorMapper
 import com.example.monitoringapp.utils.DashboardEnricher
 import com.example.monitoringapp.utils.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -146,7 +147,9 @@ class DashboardViewModel @Inject constructor(
             }
             _warning.value = null
             try {
-                incidentRepository.refreshIncidents()
+                incidentRepository.refreshIncidents().onFailure { error ->
+                    _warning.value = ApiErrorMapper.toMessage(error)
+                }
                 val overviewResult = metricsRepository.getOverview()
                 val overview = overviewResult.getOrNull()
 

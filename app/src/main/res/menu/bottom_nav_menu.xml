@@ -13,6 +13,10 @@
         android:icon="@drawable/ic_graphs"
         android:title="@string/nav_graphs" />
     <item
+        android:id="@+id/terminalHostsFragment"
+        android:icon="@drawable/ic_terminal"
+        android:title="@string/nav_terminal" />
+    <item
         android:id="@+id/settingsFragment"
         android:icon="@drawable/ic_profile"
         android:title="@string/nav_profile" />

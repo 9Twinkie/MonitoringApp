@@ -37,7 +37,6 @@ class IncidentsFragment : Fragment() {
             currentUsername = { viewModel.currentUsername },
             onFeaturedReady = { featuredBinding = it },
             onAccept = { viewModel.accept(it.id) },
-            onComplete = { viewModel.complete(it.id) },
             onClose = { showCloseDialog(it) },
             onSelect = { incident ->
                 viewModel.selectIncident(incident)
@@ -113,6 +112,18 @@ class IncidentsFragment : Fragment() {
                     }
                 }
                 launch {
+                    viewModel.isRefreshing.collect { refreshing ->
+                        binding.swipeRefresh.isRefreshing = refreshing
+                    }
+                }
+                launch {
+                    viewModel.loadError.collect { message ->
+                        if (message.isNotBlank()) {
+                            Snackbar.make(binding.root, message, Snackbar.LENGTH_LONG).show()
+                        }
+                    }
+                }
+                launch {
                     viewModel.alertsScreen.collect { state -> renderScreen(state) }
                 }
                 launch {
@@ -145,7 +156,6 @@ class IncidentsFragment : Fragment() {
     }
 
     private fun renderScreen(state: AlertsScreenState) {
-        binding.swipeRefresh.isRefreshing = false
         binding.tvEmpty.isVisible = state.isEmpty
         binding.rvIncidents.isVisible = !state.isEmpty
         binding.tvEmpty.text = when (viewModel.tab.value) {
@@ -158,18 +168,12 @@ class IncidentsFragment : Fragment() {
             return
         }
 
-        val incident = state.featured.incident
-        if (incident != null &&
-            state.featured.chart.points.isEmpty() &&
-            !state.featured.chartLoading
-        ) {
-            viewModel.loadChartFor(incident)
-        }
-
         adapter.submitList(state.listItems) {
             wireFeaturedActions()
             rebindFeaturedChart(state.featured)
         }
+        // График мог загрузиться до готовности ViewHolder — перепривязка после commit.
+        binding.rvIncidents.post { rebindFeaturedChart(state.featured) }
     }
 
     private fun rebindFeaturedChart(featured: FeaturedIncidentUi) {
@@ -187,6 +191,7 @@ class IncidentsFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         if (_binding == null) return
+        viewModel.refreshFeaturedChartIfEmpty()
         val featured = viewModel.alertsScreen.value.featured
         if (featured.incident != null) {
             binding.rvIncidents.post {
@@ -201,7 +206,6 @@ class IncidentsFragment : Fragment() {
         val incident = viewModel.alertsScreen.value.featured.incident ?: return
         IncidentUiHelper.bindActions(featured, incident, viewModel.currentUsername)
         featured.btnAccept.setOnClickListener { viewModel.accept(incident.id) }
-        featured.btnConfirm.setOnClickListener { viewModel.complete(incident.id) }
         featured.btnClose.setOnClickListener { showCloseDialog(incident) }
         featured.btnGraphs.setOnClickListener { openFeaturedGraphs() }
         featured.chartMiniContainer.setOnClickListener { openFeaturedGraphs() }

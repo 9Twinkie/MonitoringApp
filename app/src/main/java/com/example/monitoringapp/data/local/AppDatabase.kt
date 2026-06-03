@@ -18,7 +18,7 @@ import com.example.monitoringapp.data.local.entity.PendingActionEntity
         PendingActionEntity::class,
         FavoriteEntity::class
     ],
-    version = 4,
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

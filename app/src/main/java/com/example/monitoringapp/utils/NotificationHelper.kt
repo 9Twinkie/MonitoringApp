@@ -59,4 +59,17 @@ class NotificationHelper @Inject constructor(
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.notify(notificationId, notification)
     }
+
+    fun showIncidentResolvedAlert(incidentId: Long, metricLabel: String) {
+        val body = context.getString(R.string.incident_resolved_notification_body, metricLabel)
+        showIncidentAlert(
+            title = context.getString(R.string.incident_resolved_notification_title),
+            body = body,
+            notificationId = (NOTIFICATION_ID_RESOLVED_BASE + incidentId).toInt()
+        )
+    }
+
+    companion object {
+        private const val NOTIFICATION_ID_RESOLVED_BASE = 3_000
+    }
 }

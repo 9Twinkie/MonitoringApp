@@ -117,7 +117,10 @@ class MainActivity : AppCompatActivity() {
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
             val keyboardVisible = ime.bottom > systemBars.bottom + 48
-            binding.navHostFragment.updatePadding(top = systemBars.top)
+            binding.navHostFragment.updatePadding(
+                top = systemBars.top,
+                bottom = if (keyboardVisible) ime.bottom else 0
+            )
             updateBottomNavVisibility(keyboardVisible)
             binding.bottomNavigation.updatePadding(bottom = systemBars.bottom)
             insets

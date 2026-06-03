@@ -69,6 +69,7 @@
 
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/etServerUrl"
+                        style="@style/Widget.Monitoring.TextInputEditText"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:inputType="textUri"
@@ -102,9 +103,9 @@
                     android:id="@+id/btnLogout"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/spacing_sm"
+                    android:layout_marginTop="@dimen/spacing_lg"
                     android:text="@string/btn_logout"
-                    app:buttonVariant="destructiveOutlined" />
+                    app:buttonVariant="destructive" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
     </LinearLayout>

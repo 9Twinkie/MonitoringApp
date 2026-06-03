@@ -26,28 +26,31 @@
 
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/tilMetricSearch"
-                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                style="@style/Widget.Monitoring.Search"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginHorizontal="@dimen/spacing_lg"
+                android:layout_marginHorizontal="@dimen/spacing_md"
                 android:layout_marginTop="@dimen/spacing_md"
-                android:hint="@string/metric_search_hint"
                 app:endIconContentDescription="@string/metric_search_run"
-                app:endIconDrawable="@android:drawable/ic_menu_search"
-                app:endIconMode="custom">
+                app:endIconDrawable="@drawable/ic_search"
+                app:endIconMinSize="@dimen/text_input_icon_size"
+                app:endIconMode="custom"
+                app:hintEnabled="false">
 
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/etMetricSearch"
+                    style="@style/Widget.Monitoring.TextInputEditText.Search"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:gravity="top|start"
+                    android:ellipsize="end"
+                    android:hint="@string/metric_search_hint"
                     android:imeOptions="actionSearch"
                     android:importantForAutofill="no"
-                    android:inputType="textNoSuggestions|textMultiLine"
-                    android:maxLines="4"
-                    android:minHeight="48dp"
-                    android:paddingHorizontal="@dimen/spacing_md"
+                    android:inputType="textNoSuggestions"
+                    android:maxLines="1"
                     android:scrollHorizontally="true"
+                    android:singleLine="true"
+                    android:textAppearance="@style/TextAppearance.Monitoring.Body"
                     android:textIsSelectable="true" />
             </com.google.android.material.textfield.TextInputLayout>
 

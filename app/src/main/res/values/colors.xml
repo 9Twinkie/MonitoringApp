@@ -19,6 +19,8 @@
     <color name="surface_variant">#E8EEF5</color>
     <color name="divider">#DDE3EA</color>
     <color name="search_background">#FFFFFF</color>
+    <color name="input_background">#FFFFFF</color>
+    <color name="text_input_hint">@color/text_secondary</color>
 
     <!-- Семантика статусов (согласованная палитра) -->
     <color name="status_success">#2E7D32</color>
@@ -68,4 +70,11 @@
     <color name="favorite_star">#F9A825</color>
     <color name="white">#FFFFFF</color>
     <color name="black">#000000</color>
+
+    <!-- SSH-терминал -->
+    <color name="terminal_background">#0C0C0C</color>
+    <color name="terminal_foreground">#E6E6E6</color>
+    <color name="terminal_foreground_muted">#9E9E9E</color>
+    <color name="terminal_toolbar">#1A1A1A</color>
+    <color name="terminal_selection">#264F78</color>
 </resources>
